@@ -1,8 +1,13 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
 const routes: RouteRecordRaw[] = [
+  // ===== 统一登录页（三端入口：商家 / 平台 / 顾客）=====
+  { path: '/login', name: 'login', component: () => import('../views/UnifiedLoginView.vue'), meta: { public: true } },
+  // 旧独立登录页地址，重定向到统一页并选中对应身份
+  { path: '/platform/login', redirect: { path: '/login', query: { role: 'platform' } } },
+  { path: '/shop/login', redirect: { path: '/login', query: { role: 'customer' } } },
+
   // ===== 商家后台 =====
-  { path: '/login', name: 'login', component: () => import('../views/LoginView.vue'), meta: { public: true } },
   {
     path: '/',
     component: () => import('../layout/MainLayout.vue'),
@@ -24,7 +29,6 @@ const routes: RouteRecordRaw[] = [
   },
 
   // ===== 平台后台 =====
-  { path: '/platform/login', name: 'platform-login', component: () => import('../views/PlatformLoginView.vue'), meta: { public: true } },
   {
     path: '/platform',
     component: () => import('../layout/PlatformLayout.vue'),
@@ -36,7 +40,6 @@ const routes: RouteRecordRaw[] = [
   },
 
   // ===== 顾客商城 =====
-  { path: '/shop/login', name: 'shop-login', component: () => import('../views/ShopLoginView.vue'), meta: { public: true } },
   {
     path: '/shop',
     component: () => import('../layout/ShopLayout.vue'),
@@ -61,11 +64,11 @@ const router = createRouter({ history: createWebHistory(), routes })
 router.beforeEach((to) => {
   if (to.meta.public) return true
   if (to.path.startsWith('/platform')) {
-    if (!localStorage.getItem('of_platform_token')) return { name: 'platform-login' }
+    if (!localStorage.getItem('of_platform_token')) return { path: '/login', query: { role: 'platform' } }
   } else if (to.path.startsWith('/shop')) {
-    if (!localStorage.getItem('of_customer_token')) return { name: 'shop-login' }
+    if (!localStorage.getItem('of_customer_token')) return { path: '/login', query: { role: 'customer' } }
   } else {
-    if (!localStorage.getItem('of_token')) return { name: 'login' }
+    if (!localStorage.getItem('of_token')) return { path: '/login' }
   }
   return true
 })

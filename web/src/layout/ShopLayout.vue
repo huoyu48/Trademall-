@@ -66,7 +66,7 @@ const initial = computed(() => (store.username || 'C').charAt(0).toUpperCase())
 function onCommand(c: string) {
   if (c === 'logout') {
     store.logout()
-    router.replace('/shop/login')
+    router.replace('/login?role=customer')
   } else if (c === 'orders') {
     router.push('/shop/orders')
   }

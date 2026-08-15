@@ -95,7 +95,7 @@ const initial = computed(() => (store.username || 'P').charAt(0).toUpperCase())
 function onCommand(c: string) {
   if (c === 'logout') {
     store.logout()
-    router.replace('/platform/login')
+    router.replace('/login?role=platform')
   }
 }
 </script>

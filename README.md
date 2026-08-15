@@ -48,12 +48,12 @@ make run     # 一键启动，然后浏览器打开 http://localhost:8088
 make stop    # 用完关掉，释放资源
 ```
 
-打开后先看到登录页，登录才进完整功能。三端入口和默认账号：
+打开后是**统一登录页**，顶部可选「商家 / 平台管理员 / 顾客」三种身份（演示账号点击即可填入）：
 
-| 端 | 登录地址 | 默认账号 |
+| 身份 | 默认账号 | 登录后进入 |
 |---|---|---|
-| 商家后台 | `/login` | `admin-a / admin123`（租户 A）或 `admin-b / admin123`（租户 B） |
-| 平台管理 | `/platform/login` | `platform-admin / admin123` |
-| 顾客商城 | `/shop/login` | `customer01 / admin123` |
+| 商家后台 | `admin-a / admin123`（租户 A）或 `admin-b / admin123`（租户 B） | 仪表盘、商品、库存、订单 |
+| 平台管理员 | `platform-admin / admin123` | 全平台概览、租户管理 |
+| 顾客商城 | `customer01 / admin123` | 商城浏览、下单、购物车 |
 
 详细启动方式、端口约定、环境要求见 [RUN.md](docs/RUN.md)。

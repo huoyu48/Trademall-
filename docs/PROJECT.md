@@ -338,10 +338,12 @@ make stop
 
 | 身份 | 入口 | 账号 | 密码 |
 |---|---|---|---|
-| 平台管理员 | `/platform/login` | platform-admin | admin123 |
-| 商家 A（演示租户A） | `/login` | admin-a | admin123 |
-| 商家 B（演示租户B） | `/login` | admin-b | admin123 |
-| 顾客 | `/shop/login` | customer01 | admin123 |
+| 平台管理员 | 统一登录页选「平台管理员」 | platform-admin | admin123 |
+| 商家 A（演示租户A） | 统一登录页选「商家后台」 | admin-a | admin123 |
+| 商家 B（演示租户B） | 统一登录页选「商家后台」 | admin-b | admin123 |
+| 顾客 | 统一登录页选「顾客商城」 | customer01 | admin123 |
+
+> 三端共用一个登录页 `http://localhost:8088/login`，顶部 tab 切换身份（旧地址 `/platform/login`、`/shop/login` 会自动重定向到统一页对应身份）。
 
 **演示路径**：平台登录 → 新增租户（如 t-c）→ 用新租户管理员登录商家后台上传商品 → 顾客商城看到新商品 → 下单自动归属对应商家。
 
