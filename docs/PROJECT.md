@@ -2,7 +2,7 @@
 
 > 一个 **B2B2C 多租户订单履约平台**：平台管理员治理商家、商家管理商品与订单、顾客在线下单，全程带多租户数据隔离、分布式锁、消息队列与状态机保障。
 >
-> 本文是项目的**工程化说明文档**，涵盖技术栈、系统架构、核心流程与数据模型。面向面试官 / 维护者快速建立全貌认知。
+> 本文是项目的**工程化说明文档**，涵盖技术栈、系统架构、核心流程与数据模型，帮助快速建立全貌认知。
 
 ---
 
@@ -277,7 +277,7 @@ orderflow/
 ├── pom.xml                   # 后端依赖与构建
 ├── docker-compose.yml        # 全栈编排（mysql/redis/rabbitmq/backend/frontend）
 ├── Dockerfile                # 后端镜像
-├── docs/                     # 文档（PROJECT / RUN / INTERVIEW）
+├── docs/                     # 文档（PROJECT / RUN / TECHNICAL_QA）
 ├── scripts/                  # 构建 / 运行 / 停止 / 冒烟测试脚本
 │   ├── build.sh  run.sh  run-host.sh  stop.sh  smoke-test.sh
 ├── .github/workflows/ci.yml  # CI（后端编译 + 前端构建 + type-check）

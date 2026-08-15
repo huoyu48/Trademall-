@@ -15,7 +15,7 @@
     <artifactId>orderflow</artifactId>
     <version>0.1.0</version>
     <name>orderflow</name>
-    <description>OrderFlow - 多租户订单与库存系统（实习简历项目）</description>
+    <description>OrderFlow - 多租户订单履约平台</description>
 
     <properties>
         <java.version>17</java.version>

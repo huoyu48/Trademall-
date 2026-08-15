@@ -55,4 +55,4 @@ make stop    # 用完关掉，释放资源
 | [FILES.md](FILES.md) | 逐文件说明：每个文件 / 目录的作用 |
 | [PROJECT.md](docs/PROJECT.md) | 架构设计、核心流程、数据模型 |
 | [RUN.md](docs/RUN.md) | 运行手册：启动方式、端口、账号 |
-| [INTERVIEW.md](docs/INTERVIEW.md) | 技术问答：核心设计的常见问题与解答 |
+| [TECHNICAL_QA.md](docs/TECHNICAL_QA.md) | 技术问答：核心设计的常见问题与解答 |
