@@ -48,4 +48,12 @@ make run     # 一键启动，然后浏览器打开 http://localhost:8088
 make stop    # 用完关掉，释放资源
 ```
 
-默认账号 `admin-a / admin123`（租户 A）、`admin-b / admin123`（租户 B）。详细启动方式、端口约定、环境要求见 [RUN.md](docs/RUN.md)。
+打开后先看到登录页，登录才进完整功能。三端入口和默认账号：
+
+| 端 | 登录地址 | 默认账号 |
+|---|---|---|
+| 商家后台 | `/login` | `admin-a / admin123`（租户 A）或 `admin-b / admin123`（租户 B） |
+| 平台管理 | `/platform/login` | `platform-admin / admin123` |
+| 顾客商城 | `/shop/login` | `customer01 / admin123` |
+
+详细启动方式、端口约定、环境要求见 [RUN.md](docs/RUN.md)。

@@ -111,8 +111,17 @@ orderflow/
 
 ```bash
 make run      # 启动整个项目（第一次会久一点）
-# 然后浏览器打开 http://localhost:8088
+# 然后浏览器打开 http://localhost:8088 —— 会先看到登录页
+# 用下方任一账号登录，登录后才看到完整功能
 make stop     # 用完关掉，省得占内存
 ```
 
-想只看主要功能有没有坏：`make test`。想看所有命令：`make help`。
+**三个端、各自的登录地址和默认账号**（三端 token 独立，互不干扰）：
+
+| 端 | 登录地址 | 默认账号 | 登录后能看到 |
+|---|---|---|---|
+| 商家后台 | `http://localhost:8088/login` | `admin-a / admin123`（租户 A）或 `admin-b / admin123`（租户 B） | 仪表盘、商品、库存、订单、营销、退款、门店 |
+| 平台管理 | `http://localhost:8088/platform/login` | `platform-admin / admin123` | 全平台概览、租户管理 |
+| 顾客商城 | `http://localhost:8088/shop/login` | `customer01 / admin123` | 商品浏览、下单、购物车、我的订单 |
+
+想看主要功能有没有坏：`make test`。想看所有命令：`make help`。
