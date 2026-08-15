@@ -10,6 +10,7 @@
 
 | 文档 | 说明 |
 |------|------|
+| [FILES.md](FILES.md) | 文件说明：逐个说明项目里每个文件/目录的作用 |
 | [PROJECT.md](docs/PROJECT.md) | 工程化说明：系统架构、数据模型、关键设计取舍 |
 | [RUN.md](docs/RUN.md) | 运行手册：一条命令起服务、端口约定、默认账号 |
 | [INTERVIEW.md](docs/INTERVIEW.md) | 面试手册：技术亮点逐条拆解 + 高频问答 |
