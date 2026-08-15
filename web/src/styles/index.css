@@ -1,0 +1,110 @@
+/* ============================================================
+   OrderFlow 设计系统 (Design Tokens)
+   统一品牌色、圆角、阴影、字体；覆写 Element Plus 主题
+   ============================================================ */
+
+:root {
+  /* 品牌主色：靛蓝 → 紫罗兰 渐变 */
+  --of-brand: #4f46e5;
+  --of-brand-2: #7c3aed;
+  --of-brand-dark: #4338ca;
+  --of-brand-light: #eef2ff;
+
+  /* 功能色 */
+  --of-success: #10b981;
+  --of-warning: #f59e0b;
+  --of-danger: #ef4444;
+  --of-info: #3b82f6;
+
+  /* 中性色 */
+  --of-bg: #f5f7fb;
+  --of-surface: #ffffff;
+  --of-border: #eef0f4;
+  --of-text: #1f2937;
+  --of-text-2: #6b7280;
+  --of-text-3: #9ca3af;
+
+  /* 圆角 / 阴影 */
+  --of-radius: 14px;
+  --of-radius-sm: 10px;
+  --of-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
+  --of-shadow-lg: 0 12px 32px rgba(79, 70, 229, 0.12);
+
+  /* 侧边栏 */
+  --of-sidebar-w: 232px;
+
+  /* 字体 */
+  --of-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei",
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* ---------- Element Plus 主题覆写 ---------- */
+:root {
+  --el-color-primary: #4f46e5;
+  --el-color-primary-light-3: #7c73ee;
+  --el-color-primary-light-5: #a5a0f3;
+  --el-color-primary-light-7: #d3d0f9;
+  --el-color-primary-light-8: #e3e1fb;
+  --el-color-primary-light-9: #eef2ff;
+  --el-color-primary-dark-2: #4338ca;
+  --el-border-radius-base: 10px;
+  --el-border-radius-small: 8px;
+  --el-font-family: var(--of-font);
+}
+
+/* ---------- 基础重置 ---------- */
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; margin: 0; }
+body {
+  font-family: var(--of-font);
+  color: var(--of-text);
+  background: var(--of-bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+a { color: inherit; text-decoration: none; }
+
+/* ---------- 滚动条 ---------- */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #d8dce6; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #c2c8d6; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- Element Plus 组件微调 ---------- */
+.el-card {
+  border: none;
+  border-radius: var(--of-radius);
+  box-shadow: var(--of-shadow);
+}
+.el-card__header {
+  border-bottom: 1px solid var(--of-border);
+  font-weight: 600;
+  color: var(--of-text);
+}
+.el-table th.el-table__cell {
+  background: #f8fafc;
+  color: var(--of-text-2);
+  font-weight: 600;
+}
+.el-table--enable-row-hover .el-table__body tr:hover > td.el-table__cell {
+  background: #f5f3ff;
+}
+.el-button--primary {
+  background: linear-gradient(135deg, var(--of-brand), var(--of-brand-2));
+  border: none;
+  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.32);
+}
+.el-button--primary:hover {
+  background: linear-gradient(135deg, var(--of-brand-dark), #6d28d9);
+  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.42);
+}
+.el-tag { border-radius: 6px; }
+
+/* ---------- 动画 ---------- */
+@keyframes of-fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.of-fade-up { animation: of-fade-up 0.45s ease both; }
+.of-fade-enter-active, .of-fade-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
+.of-fade-enter-from, .of-fade-leave-to { opacity: 0; transform: translateY(6px); }

@@ -1,0 +1,22 @@
+# ===== Java / Maven =====
+target/
+*.class
+*.jar
+!src/**/*.jar
+.idea/
+*.iml
+*.iml
+.vscode/
+
+# ===== Node / 前端 =====
+web/node_modules/
+web/dist/
+web/.vite/
+
+# ===== OS / 日志 =====
+.DS_Store
+*.log
+
+# ===== 本地环境覆盖（按需自行创建） =====
+*.local.yml
+.env.local
