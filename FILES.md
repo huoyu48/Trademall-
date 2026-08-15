@@ -1,135 +1,147 @@
 # OrderFlow 文件说明
 
-> 本文件按「根目录 → 脚本 → 文档 → 后端 → 前端 → 隐藏目录」的顺序，逐个说明每个文件/目录的作用，方便快速定位与维护。
+> 这份文档的目标不是让你背下每个文件名，而是**看懂这个项目是怎么运转的**：先看全景关系图，再按建议顺序读，最后才是逐文件速查表。
 
 ---
 
-## 一、根目录
+## 一、项目全景：一条命令之后发生了什么
+
+```mermaid
+flowchart LR
+    A["make run<br/>(Makefile / scripts)"] --> B["docker-compose.yml<br/>编排 5 个服务"]
+    B --> C["mysql / redis / rabbitmq<br/>中间件"]
+    B --> D["backend 容器<br/>target/orderflow.jar"]
+    B --> E["frontend 容器<br/>web/dist（nginx）"]
+    D --> F["Flyway 建表<br/>db/migration V1.1~V1.9"]
+    D --> G["业务服务<br/>order / product / notification ..."]
+    E -->|"/api 反向代理"| D
+    E -->|"浏览器打开 :8088"| H["前端页面<br/>Vue3 + Element Plus"]
+```
+
+**读图提示**：所有操作都从 `make` 或 `scripts/` 里的脚本出发，最终收敛到 `docker-compose.yml`。它同时拉起三件套中间件 + 后端 + 前端；后端启动时 Flyway 自动建表，前端 nginx 把 `/api` 转发给后端。这条主线串起了仓库里一半的文件。
+
+---
+
+## 二、建议的阅读顺序
+
+| 顺序 | 读什么 | 得到什么 |
+|---|---|---|
+| 1 | `README.md` | 这项目是干嘛的、有哪些技术亮点 |
+| 2 | 本文件第一节全景图 | 文件之间怎么连起来的 |
+| 3 | `docs/PROJECT.md` | 系统架构、核心流程、数据模型 |
+| 4 | `docs/RUN.md` | 亲手把它跑起来 |
+| 5 | `docs/INTERVIEW.md` | 面试怎么讲、会被追问什么 |
+
+---
+
+## 三、想改某块功能，去哪找
+
+| 我想做这件事 | 去看 / 改这里 |
+|---|---|
+| 改下单、状态机、超时取消逻辑 | `src/main/java/com/orderflow/order/` |
+| 改库存扣减、分布式锁防超卖 | `src/main/java/com/orderflow/product/`（`InventoryService` 等） |
+| 改商品 / 分类 / 门店 / 顾客 / 营销 / 退款 | `src/main/java/com/orderflow/` 下同名包 |
+| 改登录鉴权、JWT | `.../auth/` 与 `.../security/` |
+| 新增一张表 / 字段 | `src/main/resources/db/migration/` 新增 `V1.10__xxx.sql` |
+| 改中间件端口 / 账号密码 | `docker-compose.yml` + `src/main/resources/application.yml` **两处同步** |
+| 改前端某个页面 | `web/src/views/` 对应目录 |
+| 加一个后端接口 | 对应业务包的 `Controller` → `Service` |
+| 改路由 / 三端门控 | `web/src/router/` |
+| 改构建 / 启动流程 | `Makefile` 与 `scripts/` 对应脚本 |
+
+---
+
+## 四、逐文件速查
+
+### 4.1 根目录
 
 | 文件 / 目录 | 作用 |
 |---|---|
-| `README.md` | 项目门面：一句话定位、技术亮点、架构图、快速开始、默认账号。新人/面试官看的第一份文档 |
-| `FILES.md` | 本文件：逐文件说明项目结构 |
-| `pom.xml` | Maven 构建配置：声明 Spring Boot 3.3.5 / MyBatis-Plus / Flyway / JWT 等依赖，`finalName=orderflow` 决定 jar 名 |
-| `mvnw` / `mvnw.cmd` | Maven Wrapper 启动脚本（`mvnw` 用于 macOS/Linux，`mvnw.cmd` 用于 Windows）。自动下载并锁定 Maven 版本，无需本机装 mvn |
-| `Makefile` | 命令入口：`make infra/build/run/stop/test/clean` 封装常用操作 |
-| `docker-compose.yml` | 全栈编排：mysql / redis / rabbitmq / backend / frontend 五个服务，一键起依赖或整套 |
-| `Dockerfile` | 后端运行镜像：基于 `eclipse-temurin:17-jre`，把 `target/orderflow.jar` 打成容器 |
-| `src/` | 后端源码（Spring Boot，按领域分包），详见第三节 |
-| `web/` | 前端源码（Vue3 + Vite + TS 子工程），详见第四节 |
-| `target/` | Maven 构建产物（`orderflow.jar` 等），被 `.gitignore` 忽略，勿手动编辑 |
-| `docs/` | 项目文档目录，详见第二节 |
-| `scripts/` | 脚本目录，详见第二节 |
+| `README.md` | 项目门面：定位、亮点、架构图、快速开始、默认账号 |
+| `FILES.md` | 本文件：看懂项目结构 + 逐文件速查 |
+| `pom.xml` | Maven 构建配置（依赖、`finalName=orderflow` 决定 jar 名） |
+| `mvnw` / `mvnw.cmd` | Maven Wrapper（macOS/Linux 用 `mvnw`，Windows 用 `.cmd`），无需本机装 mvn |
+| `Makefile` | 命令入口：`make infra/build/run/stop/test/clean` |
+| `docker-compose.yml` | 全栈编排：mysql / redis / rabbitmq / backend / frontend |
+| `Dockerfile` | 后端镜像（`eclipse-temurin:17-jre` + `orderflow.jar`） |
+| `src/` | 后端源码（见第五节） |
+| `web/` | 前端源码（见第六节） |
+| `target/` | 构建产物，被 gitignore，勿手改 |
+| `docs/` | 文档目录 |
+| `scripts/` | 脚本目录 |
 
----
-
-## 二、scripts/ 与 docs/
-
-### 2.1 scripts/ —— 脚本
+### 4.2 scripts/ —— 脚本
 
 | 脚本 | 作用 |
 |---|---|
-| `build.sh` | 一键构建：后端 jar → 前端 dist → docker 镜像，三步串起来 |
-| `run.sh` | 一键启动全栈（`docker compose up -d --build`），前端 8088 / 后端 /api |
-| `run-host.sh` | 宿主机模式启动后端：本地起 jar（JVM 堆 512m），中间件仍用 docker |
-| `stop.sh` | 停止全栈（`docker compose down`），释放容器资源 |
-| `smoke-test.sh` | 端到端冒烟测试：起应用 → 健康检查 → 登录 → 下单 → 状态机 → 幂等 → 跨租户隔离 → RabbitMQ 接线，逐项 PASS/FAIL 汇总 |
+| `build.sh` | 一键构建：后端 jar → 前端 dist → docker 镜像 |
+| `run.sh` | 一键启动全栈（前端 :8088 / 后端 /api） |
+| `run-host.sh` | 宿主机模式启动后端（中间件用 docker，jar 跑本机） |
+| `stop.sh` | 停止全栈，释放容器资源 |
+| `smoke-test.sh` | 端到端冒烟测试，逐项 PASS/FAIL 汇总 |
 
-### 2.2 docs/ —— 文档
+### 4.3 docs/ —— 文档
 
 | 文档 | 作用 |
 |---|---|
-| `PROJECT.md` | 工程化说明：技术栈、系统架构、核心流程、数据模型、设计取舍。面向面试官/维护者建立全貌 |
-| `RUN.md` | 运行手册：环境要求、端口约定、两种启动方式、常用校验命令 |
-| `INTERVIEW.md` | 面试手册：技术亮点逐条拆解 + 高频问答，简历项目描述底稿 |
+| `PROJECT.md` | 工程化说明：架构、流程、数据模型、设计取舍 |
+| `RUN.md` | 运行手册：环境、端口、两种启动方式 |
+| `INTERVIEW.md` | 面试手册：亮点拆解 + 高频问答 |
 
 ---
 
-## 三、后端 src/
+## 五、后端 src/
 
-### 3.1 入口与配置
+- **入口**：`src/main/java/com/orderflow/OrderFlowApplication.java`（启动主类）
+- **配置**：`src/main/resources/application.yml`（context-path=/api、数据源、Redis、RabbitMQ）
+- **建表**：`src/main/resources/db/migration/`（Flyway 迁移 `V1.1`~`V1.9`）
 
-| 路径 | 作用 |
+**领域分包**（`src/main/java/com/orderflow/`，一个包对应一块业务）：
+
+| 包 | 职责 |
 |---|---|
-| `src/main/java/com/orderflow/OrderFlowApplication.java` | Spring Boot 启动主类 |
-| `src/main/resources/application.yml` | 应用配置（context-path=/api、数据源、Redis、RabbitMQ 等） |
-| `src/main/resources/db/migration/` | Flyway 迁移脚本 `V1.1`~`V1.9`，版本化建表，杜绝手改库 |
-
-### 3.2 领域分包（`src/main/java/com/orderflow/`）
-
-| 包 | 作用 |
-|---|---|
-| `auth/` | Spring Security + JWT、种子账号 |
-| `security/` | 安全相关（过滤器、鉴权） |
-| `order/` | 订单状态机、超时自动取消、死信消费 |
-| `product/` | 商品与库存：商品管理、库存调整、分布式锁防超卖（`InventoryService` 等在此包） |
-| `category/` | 商品分类 |
-| `store/` | 门店 |
-| `customer/` | 顾客商城端 |
-| `platform/` | 平台管理端（跨租户聚合统计） |
-| `promotion/` | 营销满减 |
-| `refund/` | 退款售后 |
-| `notification/` | 异步通知、低库存告警 |
-| `audit/` | 审计留痕 |
-| `common/` | 健康检查、全局异常、多租户拦截等公共设施 |
-| `config/` | Spring 配置类 |
-| `domain/` | 领域模型/通用实体 |
-
-> 注：多租户隔离由 MyBatis-Plus 的 `TenantLineHandler` 在 SQL 层自动注入 `tenant_id`，具体机制见 `docs/PROJECT.md`。
+| `auth/` `security/` | 认证鉴权：Spring Security + JWT、种子账号 |
+| `order/` | 订单：状态机、超时自动取消、死信消费 |
+| `product/` | 商品 + 库存：库存调整、分布式锁防超卖 |
+| `category/` `store/` | 分类、门店 |
+| `customer/` `platform/` | 顾客商城端、平台管理端（跨租户统计） |
+| `promotion/` `refund/` | 营销满减、退款售后 |
+| `notification/` `audit/` | 异步通知、审计留痕 |
+| `common/` `config/` `domain/` | 公共设施、Spring 配置、领域模型 |
 
 ---
 
-## 四、前端 web/
+## 六、前端 web/
 
-### 4.1 顶层文件
+**顶层**：`package.json`（依赖）、`vite.config.ts`（构建 + dev 代理 /api）、`index.html`（SPA 入口）、`nginx.conf`（生产反代）、`Dockerfile`（nginx 镜像）。
 
-| 文件 | 作用 |
+**源码 `web/src/`**：
+
+| 目录 | 职责 |
 |---|---|
-| `package.json` / `package-lock.json` | 前端依赖声明与锁文件 |
-| `vite.config.ts` | Vite 构建配置（含 dev 代理 `/api` → 后端） |
-| `tsconfig.json` / `tsconfig.node.json` | TypeScript 配置（应用 / Node 环境） |
-| `index.html` | SPA 入口 HTML |
-| `nginx.conf` | 生产容器内 nginx 配置，反代 `/api` 到后端 |
-| `Dockerfile` | 前端镜像（nginx 托管 `dist` 静态产物） |
-| `.dockerignore` | 前端镜像构建的忽略清单 |
-| `dist/` | 前端构建产物（`npm run build` 生成，被 gitignore） |
-| `node_modules/` | 前端依赖安装目录（被 gitignore） |
-
-### 4.2 源码（`web/src/`）
-
-| 目录 | 作用 |
-|---|---|
+| `views/` | 页面（仪表盘、商品、库存、订单管理） |
+| `router/` | 路由 + 三端门控 |
 | `api/` | 后端接口封装（Axios） |
-| `views/` | 页面（仪表盘、商品、库存、订单管理等） |
-| `layout/` | 布局组件 |
-| `router/` | 路由 + 三端（平台/商家/顾客）门控 |
-| `stores/` | Pinia 状态管理 |
-| `components/` | 通用组件 |
-| `types/` | TypeScript 类型定义 |
-| `utils/` | 工具函数 |
-| `constants/` | 常量定义 |
-| `styles/` | 全局样式 / 设计系统（CSS 变量 + Element Plus 主题） |
+| `stores/` | Pinia 状态 |
+| `layout/` `components/` | 布局、通用组件 |
+| `types/` `utils/` `constants/` `styles/` | 类型、工具、常量、全局样式 |
 
 ---
 
-## 五、隐藏目录
+## 七、隐藏目录与常用命令
 
 | 路径 | 作用 |
 |---|---|
-| `.gitignore` | Git 忽略规则：排除 `target/`、`node_modules/`、`dist/`、`.DS_Store` 等 |
-| `.github/workflows/ci.yml` | CI：push 到 main/master 时编译后端 + 构建前端 + type-check |
-| `.mvn/wrapper/maven-wrapper.properties` | Maven Wrapper 配置：锁定 Maven 3.9.9 |
-| `.vscode/settings.json` | VS Code 项目配置：关闭 Java 自动编译、排除构建产物监听，降低资源占用 |
-
----
-
-## 六、常用命令速查
+| `.gitignore` | 排除 `target/` `node_modules/` `dist/` `.DS_Store` |
+| `.github/workflows/ci.yml` | CI：编译后端 + 构建前端 + type-check |
+| `.mvn/wrapper/maven-wrapper.properties` | 锁定 Maven 3.9.9 |
+| `.vscode/settings.json` | 关 Java 自动编译、排除构建产物监听（省资源） |
 
 ```bash
 make help      # 查看所有命令
-make infra     # 只起中间件（MySQL/Redis/RabbitMQ）
-make build     # 构建后端 jar + 前端 dist
+make infra     # 只起中间件
+make build     # 构建后端 + 前端
 make run       # 一键启动全栈
-make test      # 端到端冒烟测试
+make test      # 冒烟测试
 make stop      # 停止并释放资源
 ```
