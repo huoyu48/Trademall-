@@ -1,147 +1,118 @@
-# OrderFlow 文件说明
+# OrderFlow 文件说明（小白版）
 
-> 这份文档的目标不是让你背下每个文件名，而是**看懂这个项目是怎么运转的**：先看全景关系图，再按建议顺序读，最后才是逐文件速查表。
+> 这份文档的目标：**不写代码的人，打开这个文件夹，也知道每个文件是干嘛的。**
+> 不假设你懂 Docker、Maven、Flyway 这些词——遇到了就当场用大白话解释。
 
 ---
 
-## 一、项目全景：一条命令之后发生了什么
+## 一、先记住一句话：这个项目分三块
 
-```mermaid
-flowchart LR
-    A["make run<br/>(Makefile / scripts)"] --> B["docker-compose.yml<br/>编排 5 个服务"]
-    B --> C["mysql / redis / rabbitmq<br/>中间件"]
-    B --> D["backend 容器<br/>target/orderflow.jar"]
-    B --> E["frontend 容器<br/>web/dist（nginx）"]
-    D --> F["Flyway 建表<br/>db/migration V1.1~V1.9"]
-    D --> G["业务服务<br/>order / product / notification ..."]
-    E -->|"/api 反向代理"| D
-    E -->|"浏览器打开 :8088"| H["前端页面<br/>Vue3 + Element Plus"]
+OrderFlow 是一个**订单管理系统**：商家在后台上传商品、管理订单，顾客在前台浏览下单。整个项目由三块拼起来：
+
+| 块 | 类比 | 对应位置 |
+|---|---|---|
+| **后端** | 大脑：算账、扣库存、处理订单 | `src/` 文件夹 |
+| **前端** | 脸：你看到的网页界面 | `web/` 文件夹 |
+| **配置 + 中间件** | 基础设施：数据库存数据、缓存提速、消息队列传话 | 根目录的一堆 `.yml`、`Dockerfile` 等 |
+
+记住这个，后面每个文件都对号入座。
+
+---
+
+## 二、文件夹里都有啥（一张图看懂层次）
+
+```
+orderflow/
+├── README.md           ← 项目的"自我介绍"
+├── FILES.md            ← 就是你正在看的这份
+├── pom.xml             ← 后端要用的"工具清单"
+├── mvnw / mvnw.cmd     ← 一键编译的小程序
+├── Makefile            ← 快捷命令集合
+├── docker-compose.yml  ← 一键启动所有软件的清单
+├── Dockerfile          ← 后端"打包说明书"
+├── src/                ← 后端代码（大脑）
+├── web/                ← 前端代码（脸）
+├── docs/               ← 说明文档
+├── scripts/            ← 各种脚本
+└── target/             ← 编译后的成品（自动生成，别碰）
 ```
 
-**读图提示**：所有操作都从 `make` 或 `scripts/` 里的脚本出发，最终收敛到 `docker-compose.yml`。它同时拉起三件套中间件 + 后端 + 前端；后端启动时 Flyway 自动建表，前端 nginx 把 `/api` 转发给后端。这条主线串起了仓库里一半的文件。
+---
+
+## 三、逐文件说明（按"什么时候会碰它"分组）
+
+### 3.1 想了解这个项目是干嘛的 → 看这些
+
+| 文件 | 用大白话说 |
+|---|---|
+| `README.md` | 项目的**自我介绍**。第一次看这个项目，先读它：一句话知道它是什么、有什么亮点、怎么快速跑起来 |
+| `FILES.md` | 就是这份：逐个文件解释干嘛用，看不懂别的文件时回来查 |
+| `docs/PROJECT.md` | **详细设计说明书**：这个系统是怎么搭的、数据怎么存、为什么这么设计。想深入就翻它 |
+| `docs/RUN.md` | **运行手册**：手把手教你把项目跑起来 |
+| `docs/INTERVIEW.md` | **面试用**：这个项目面试时怎么讲、会被问什么问题 |
+
+### 3.2 想把项目跑起来 → 用这些
+
+| 文件 | 用大白话说 |
+|---|---|
+| `Makefile` | **快捷命令**集合。把"启动/停止/测试"这些麻烦操作，浓缩成一个单词：敲 `make run` 就等于执行一长串命令 |
+| `scripts/run.sh` | 一条命令启动整个项目 |
+| `scripts/build.sh` | 一条命令把后端 + 前端都编译打包好 |
+| `scripts/run-host.sh` | 只启动后端（数据库等用 docker，后端在你电脑上直接跑），适合自己开发调试 |
+| `scripts/stop.sh` | 一条命令停掉项目，免得软件在后台一直占内存、电脑发烫 |
+| `scripts/smoke-test.sh` | 自动**体检**：把"登录、下单、扣库存"这些主要功能自动跑一遍，告诉你有没有坏 |
+
+### 3.3 后端代码（大脑）→ `src/` 里
+
+| 文件 / 文件夹 | 用大白话说 |
+|---|---|
+| `src/main/java/.../OrderFlowApplication.java` | 后端的**总开关**，启动程序就靠它 |
+| `src/main/resources/application.yml` | 后端的**设置文件**：数据库地址、密码、端口都写在这 |
+| `src/main/resources/db/migration/` | 一堆**建表脚本**。程序每次启动会自动执行，把数据库的表结构建好。要加新表就加一个新文件 |
+| `src/main/java/.../order/` | 订单相关：下单、订单状态流转、超时自动取消 |
+| `src/main/java/.../product/` | 商品和库存：上传商品、调整库存、防止超卖 |
+| `src/main/java/.../auth/` `security/` | 登录鉴权：谁有权限干什么 |
+| `src/main/java/.../` 其它包 | 每个文件夹管一件事：`category` 分类、`store` 门店、`customer` 顾客、`platform` 平台、`promotion` 促销、`refund` 退款、`notification` 通知、`audit` 审计 |
+
+> 规律：后端按「一个文件夹管一件事」划分，文件夹名就是它管的事。
+
+### 3.4 前端代码（脸）→ `web/` 里
+
+| 文件 / 文件夹 | 用大白话说 |
+|---|---|
+| `web/package.json` | 前端的**工具清单**：用到哪些现成库（列表、图表、弹窗这些） |
+| `web/vite.config.ts` | 前端的**编译设置** |
+| `web/index.html` | 网页的**第一页**（入口） |
+| `web/src/views/` | 你看到的**每个页面**都在这里（仪表盘、商品页、订单页） |
+| `web/src/` 其它目录 | `router` 页面跳转、`api` 跟后端要数据、`stores` 存临时数据、`components` 通用小部件、`styles` 样式 |
+
+### 3.5 把后端、前端、数据库串起来的"打包/启动"文件
+
+| 文件 | 用大白话说 |
+|---|---|
+| `pom.xml` | 后端的**购物清单**：列出要用哪些现成的 Java 库，编译时照单下载 |
+| `mvnw` / `mvnw.cmd` | 一个**小程序**，让你电脑上没装 Maven 也能编译后端（它自己会去下载）。`mvnw` 给苹果/Linux 用，`.cmd` 给 Windows 用 |
+| `docker-compose.yml` | **一键开机清单**：告诉电脑把 MySQL（存数据）、Redis（提速）、RabbitMQ（传消息）、后端、前端这 5 个软件一起启动，并规定它们怎么连 |
+| `Dockerfile` | 后端的**打包说明书**：教电脑把后端代码打包成一个能直接运行的小盒子 |
+
+### 3.6 其它（隐藏文件 / 自动生成）
+
+| 文件 / 文件夹 | 用大白话说 |
+|---|---|
+| `.gitignore` | 告诉版本管理工具：这些文件不用管（比如编译产物、依赖包），别提交上去 |
+| `.github/workflows/ci.yml` | **自动检查**：代码推到 GitHub 后，自动编译测试，发现错误就报警 |
+| `.mvn/wrapper/` | 配合 `mvnw` 用的小配置文件 |
+| `.vscode/settings.json` | 编辑器设置：让写代码时不那么卡、不发烫 |
+| `target/` `web/dist/` `web/node_modules/` | 电脑**自动生成**的（编译成品、下载的依赖），别手改，删了重新编译/安装就有 |
 
 ---
 
-## 二、建议的阅读顺序
-
-| 顺序 | 读什么 | 得到什么 |
-|---|---|---|
-| 1 | `README.md` | 这项目是干嘛的、有哪些技术亮点 |
-| 2 | 本文件第一节全景图 | 文件之间怎么连起来的 |
-| 3 | `docs/PROJECT.md` | 系统架构、核心流程、数据模型 |
-| 4 | `docs/RUN.md` | 亲手把它跑起来 |
-| 5 | `docs/INTERVIEW.md` | 面试怎么讲、会被追问什么 |
-
----
-
-## 三、想改某块功能，去哪找
-
-| 我想做这件事 | 去看 / 改这里 |
-|---|---|
-| 改下单、状态机、超时取消逻辑 | `src/main/java/com/orderflow/order/` |
-| 改库存扣减、分布式锁防超卖 | `src/main/java/com/orderflow/product/`（`InventoryService` 等） |
-| 改商品 / 分类 / 门店 / 顾客 / 营销 / 退款 | `src/main/java/com/orderflow/` 下同名包 |
-| 改登录鉴权、JWT | `.../auth/` 与 `.../security/` |
-| 新增一张表 / 字段 | `src/main/resources/db/migration/` 新增 `V1.10__xxx.sql` |
-| 改中间件端口 / 账号密码 | `docker-compose.yml` + `src/main/resources/application.yml` **两处同步** |
-| 改前端某个页面 | `web/src/views/` 对应目录 |
-| 加一个后端接口 | 对应业务包的 `Controller` → `Service` |
-| 改路由 / 三端门控 | `web/src/router/` |
-| 改构建 / 启动流程 | `Makefile` 与 `scripts/` 对应脚本 |
-
----
-
-## 四、逐文件速查
-
-### 4.1 根目录
-
-| 文件 / 目录 | 作用 |
-|---|---|
-| `README.md` | 项目门面：定位、亮点、架构图、快速开始、默认账号 |
-| `FILES.md` | 本文件：看懂项目结构 + 逐文件速查 |
-| `pom.xml` | Maven 构建配置（依赖、`finalName=orderflow` 决定 jar 名） |
-| `mvnw` / `mvnw.cmd` | Maven Wrapper（macOS/Linux 用 `mvnw`，Windows 用 `.cmd`），无需本机装 mvn |
-| `Makefile` | 命令入口：`make infra/build/run/stop/test/clean` |
-| `docker-compose.yml` | 全栈编排：mysql / redis / rabbitmq / backend / frontend |
-| `Dockerfile` | 后端镜像（`eclipse-temurin:17-jre` + `orderflow.jar`） |
-| `src/` | 后端源码（见第五节） |
-| `web/` | 前端源码（见第六节） |
-| `target/` | 构建产物，被 gitignore，勿手改 |
-| `docs/` | 文档目录 |
-| `scripts/` | 脚本目录 |
-
-### 4.2 scripts/ —— 脚本
-
-| 脚本 | 作用 |
-|---|---|
-| `build.sh` | 一键构建：后端 jar → 前端 dist → docker 镜像 |
-| `run.sh` | 一键启动全栈（前端 :8088 / 后端 /api） |
-| `run-host.sh` | 宿主机模式启动后端（中间件用 docker，jar 跑本机） |
-| `stop.sh` | 停止全栈，释放容器资源 |
-| `smoke-test.sh` | 端到端冒烟测试，逐项 PASS/FAIL 汇总 |
-
-### 4.3 docs/ —— 文档
-
-| 文档 | 作用 |
-|---|---|
-| `PROJECT.md` | 工程化说明：架构、流程、数据模型、设计取舍 |
-| `RUN.md` | 运行手册：环境、端口、两种启动方式 |
-| `INTERVIEW.md` | 面试手册：亮点拆解 + 高频问答 |
-
----
-
-## 五、后端 src/
-
-- **入口**：`src/main/java/com/orderflow/OrderFlowApplication.java`（启动主类）
-- **配置**：`src/main/resources/application.yml`（context-path=/api、数据源、Redis、RabbitMQ）
-- **建表**：`src/main/resources/db/migration/`（Flyway 迁移 `V1.1`~`V1.9`）
-
-**领域分包**（`src/main/java/com/orderflow/`，一个包对应一块业务）：
-
-| 包 | 职责 |
-|---|---|
-| `auth/` `security/` | 认证鉴权：Spring Security + JWT、种子账号 |
-| `order/` | 订单：状态机、超时自动取消、死信消费 |
-| `product/` | 商品 + 库存：库存调整、分布式锁防超卖 |
-| `category/` `store/` | 分类、门店 |
-| `customer/` `platform/` | 顾客商城端、平台管理端（跨租户统计） |
-| `promotion/` `refund/` | 营销满减、退款售后 |
-| `notification/` `audit/` | 异步通知、审计留痕 |
-| `common/` `config/` `domain/` | 公共设施、Spring 配置、领域模型 |
-
----
-
-## 六、前端 web/
-
-**顶层**：`package.json`（依赖）、`vite.config.ts`（构建 + dev 代理 /api）、`index.html`（SPA 入口）、`nginx.conf`（生产反代）、`Dockerfile`（nginx 镜像）。
-
-**源码 `web/src/`**：
-
-| 目录 | 职责 |
-|---|---|
-| `views/` | 页面（仪表盘、商品、库存、订单管理） |
-| `router/` | 路由 + 三端门控 |
-| `api/` | 后端接口封装（Axios） |
-| `stores/` | Pinia 状态 |
-| `layout/` `components/` | 布局、通用组件 |
-| `types/` `utils/` `constants/` `styles/` | 类型、工具、常量、全局样式 |
-
----
-
-## 七、隐藏目录与常用命令
-
-| 路径 | 作用 |
-|---|---|
-| `.gitignore` | 排除 `target/` `node_modules/` `dist/` `.DS_Store` |
-| `.github/workflows/ci.yml` | CI：编译后端 + 构建前端 + type-check |
-| `.mvn/wrapper/maven-wrapper.properties` | 锁定 Maven 3.9.9 |
-| `.vscode/settings.json` | 关 Java 自动编译、排除构建产物监听（省资源） |
+## 四、小白想亲手跑起来，敲这几句就行
 
 ```bash
-make help      # 查看所有命令
-make infra     # 只起中间件
-make build     # 构建后端 + 前端
-make run       # 一键启动全栈
-make test      # 冒烟测试
-make stop      # 停止并释放资源
+make run      # 启动整个项目（第一次会久一点）
+# 然后浏览器打开 http://localhost:8088
+make stop     # 用完关掉，省得占内存
 ```
+
+想只看主要功能有没有坏：`make test`。想看所有命令：`make help`。
