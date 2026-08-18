@@ -9,8 +9,20 @@ export interface CustomerTokenResponse {
   roles: string[]
 }
 
+export interface CustomerRegisterRequest {
+  username: string
+  password: string
+  confirmPassword: string
+  nickname?: string
+  phone?: string
+}
+
 export function login(username: string, password: string) {
   return http.post<CustomerTokenResponse>('/customer/auth/login', { username, password })
+}
+
+export function register(request: CustomerRegisterRequest) {
+  return http.post<CustomerTokenResponse>('/customer/auth/register', request)
 }
 
 export function products(page = 1, size = 12, categoryId?: number, keyword?: string) {

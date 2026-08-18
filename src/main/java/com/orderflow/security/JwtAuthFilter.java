@@ -27,7 +27,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private final List<String> permitAll;
 
     public JwtAuthFilter(JwtTokenProvider jwtTokenProvider,
-                        @Value("#{'${orderflow.security.permit-all:/api/auth/login,/api/platform/auth/login,/api/customer/auth/login,/actuator/**,/api/health}'.split(',')}")
+                        @Value("#{'${orderflow.security.permit-all:/api/auth/login,/api/platform/auth/login,/api/customer/auth/login,/api/customer/auth/register,/actuator/**,/api/health}'.split(',')}")
                         List<String> permitAll) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.permitAll = permitAll;

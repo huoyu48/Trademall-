@@ -8,6 +8,8 @@ import lombok.Getter;
 @Getter
 public enum BizErrorCode {
     LOGIN_FAILED(40101, "用户名或密码错误"),
+    CUSTOMER_USERNAME_DUPLICATED(40909, "用户名已存在"),
+    PASSWORD_CONFIRM_MISMATCH(40002, "两次输入的密码不一致"),
     TENANT_NOT_FOUND(40401, "租户不存在"),
     TENANT_CODE_DUPLICATED(40908, "租户编码已存在"),
     PRODUCT_CODE_DUPLICATED(40901, "商品编码已存在"),

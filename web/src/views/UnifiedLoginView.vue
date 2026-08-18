@@ -50,6 +50,10 @@
           </el-button>
         </el-form>
 
+        <div v-if="activeRole === 'customer'" class="register-entry">
+          还没有账号？<el-button link type="primary" @click="registerVisible = true">立即注册</el-button>
+        </div>
+
         <div class="demo-hint">
           <span class="demo-label">演示账号（点击填入）</span>
           <code class="demo-click" @click="fillDemo">{{ activeRoleMeta.username }}</code>
@@ -57,6 +61,31 @@
           <code class="demo-click" @click="fillDemo">{{ activeRoleMeta.password }}</code>
         </div>
       </div>
+
+      <el-dialog v-model="registerVisible" title="注册顾客账号" width="400px" :close-on-click-modal="false">
+        <el-form ref="registerFormRef" :model="registerForm" :rules="registerRules" label-position="top"
+                 @submit.prevent="onRegister">
+          <el-form-item label="用户名" prop="username">
+            <el-input v-model="registerForm.username" placeholder="3-32 位字母、数字或下划线" />
+          </el-form-item>
+          <el-form-item label="昵称（选填）" prop="nickname">
+            <el-input v-model="registerForm.nickname" placeholder="默认使用用户名" />
+          </el-form-item>
+          <el-form-item label="手机号（选填）" prop="phone">
+            <el-input v-model="registerForm.phone" placeholder="仅支持中国大陆手机号" />
+          </el-form-item>
+          <el-form-item label="密码" prop="password">
+            <el-input v-model="registerForm.password" type="password" show-password placeholder="至少 6 位" />
+          </el-form-item>
+          <el-form-item label="确认密码" prop="confirmPassword">
+            <el-input v-model="registerForm.confirmPassword" type="password" show-password @keyup.enter="onRegister" />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="registerVisible = false">取消</el-button>
+          <el-button type="primary" :loading="registering" @click="onRegister">注册并登录</el-button>
+        </template>
+      </el-dialog>
     </main>
   </div>
 </template>
@@ -87,6 +116,10 @@ const customerStore = useCustomerStore()
 const formRef = ref()
 const loading = ref(false)
 const form = ref({ username: '', password: '' })
+const registerVisible = ref(false)
+const registerFormRef = ref()
+const registering = ref(false)
+const registerForm = ref({ username: '', nickname: '', phone: '', password: '', confirmPassword: '' })
 
 function resolveInitialRole(): RoleKey {
   const q = route.query.role as string
@@ -100,6 +133,21 @@ const activeRoleMeta = computed(() => roleList.find(r => r.key === activeRole.va
 const rules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
+}
+
+const registerRules = {
+  username: [
+    { required: true, message: '请输入用户名', trigger: 'blur' },
+    { pattern: /^[A-Za-z0-9_]{3,32}$/, message: '用户名需为 3-32 位字母、数字或下划线', trigger: 'blur' }
+  ],
+  nickname: [{ max: 64, message: '昵称不能超过 64 位', trigger: 'blur' }],
+  phone: [{ pattern: /^$|^1[3-9]\d{9}$/, message: '请输入正确的中国大陆手机号', trigger: 'blur' }],
+  password: [{ required: true, message: '请输入密码', trigger: 'blur' }, { min: 6, max: 64, message: '密码长度需为 6-64 位', trigger: 'blur' }],
+  confirmPassword: [{ required: true, message: '请再次输入密码', trigger: 'blur' }, {
+    validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+      callback(value === registerForm.value.password ? undefined : new Error('两次输入的密码不一致'))
+    }, trigger: 'blur'
+  }]
 }
 
 function switchRole(key: RoleKey) {
@@ -132,6 +180,21 @@ async function onSubmit() {
       }
     } finally {
       loading.value = false
+    }
+  })
+}
+
+async function onRegister() {
+  await registerFormRef.value.validate(async (ok: boolean) => {
+    if (!ok) return
+    registering.value = true
+    try {
+      await customerStore.register({ ...registerForm.value })
+      ElMessage.success('注册成功，已自动登录')
+      registerVisible.value = false
+      router.replace('/shop')
+    } finally {
+      registering.value = false
     }
   })
 }
@@ -228,6 +291,7 @@ async function onSubmit() {
 }
 
 .submit { width: 100%; margin-top: 6px; letter-spacing: 4px; font-weight: 600; }
+.register-entry { margin-top: 14px; text-align: center; font-size: 13px; color: #6b7280; }
 .demo-hint {
   margin-top: 22px;
   text-align: center;

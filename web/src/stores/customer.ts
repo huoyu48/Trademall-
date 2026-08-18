@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { login as customerLogin } from '../api/customer'
+import { login as customerLogin, register as customerRegister, type CustomerRegisterRequest, type CustomerTokenResponse } from '../api/customer'
 
 interface CustomerState {
   token: string
@@ -24,6 +24,13 @@ export const useCustomerStore = defineStore('customer', {
   actions: {
     async login(username: string, password: string) {
       const data = await customerLogin(username, password)
+      this.saveSession(data)
+    },
+    async register(request: CustomerRegisterRequest) {
+      const data = await customerRegister(request)
+      this.saveSession(data)
+    },
+    saveSession(data: CustomerTokenResponse) {
       this.token = data.token
       this.userId = data.userId
       this.username = data.username
