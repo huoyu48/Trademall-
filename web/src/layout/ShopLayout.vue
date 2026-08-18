@@ -13,6 +13,7 @@
                    :ellipsis="false" class="shop-menu">
             <el-menu-item index="/shop">首页</el-menu-item>
             <el-menu-item index="/shop/orders">我的订单</el-menu-item>
+            <el-menu-item index="/shop/chat">咨询消息</el-menu-item>
           </el-menu>
         </nav>
 
@@ -31,6 +32,7 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="orders"><el-icon><Tickets /></el-icon> 我的订单</el-dropdown-item>
+                <el-dropdown-item command="chat"><el-icon><ChatDotRound /></el-icon> 咨询消息</el-dropdown-item>
                 <el-dropdown-item command="logout" divided><el-icon><SwitchButton /></el-icon> 退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -69,6 +71,8 @@ function onCommand(c: string) {
     router.replace('/login?role=customer')
   } else if (c === 'orders') {
     router.push('/shop/orders')
+  } else if (c === 'chat') {
+    router.push('/shop/chat')
   }
 }
 </script>

@@ -42,6 +42,9 @@
           <el-button size="large" class="btn-cart" @click="addToCart">
             <el-icon style="margin-right: 6px"><ShoppingCart /></el-icon>加入购物车
           </el-button>
+          <el-button size="large" class="btn-chat" @click="contactMerchant">
+            <el-icon style="margin-right: 6px"><ChatDotRound /></el-icon>联系商家
+          </el-button>
           <el-button size="large" type="primary" class="btn-buy" @click="buyNow">立即购买</el-button>
         </div>
 
@@ -76,6 +79,7 @@ import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { productDetail, products as fetchProducts } from '../../api/customer'
+import { customerChatApi } from '../../api/chat'
 import { useCartStore } from '../../stores/cart'
 import { centToYuan } from '../../utils/money'
 import { categoryStyle, formatSales } from '../../utils/product'
@@ -103,6 +107,12 @@ function buyNow() {
   if (!p.value) return
   cart.add(p.value, 1)
   router.push('/shop/cart')
+}
+
+async function contactMerchant() {
+  if (!p.value) return
+  const conversation = await customerChatApi.open(p.value.id)
+  router.push({ path: '/shop/chat', query: { conversationId: String(conversation.id) } })
 }
 
 function goToProduct(id: number) {
@@ -182,6 +192,7 @@ watch(
 }
 .pdp-actions { display: flex; gap: 14px; }
 .btn-cart { flex: 1; border-color: #0f766e; color: #0f766e; }
+.btn-chat { flex: 1; color: #4f46e5; border-color: #a5b4fc; }
 .btn-buy { flex: 1; font-weight: 600; }
 
 .pdp-specs {

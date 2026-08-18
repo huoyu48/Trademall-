@@ -55,3 +55,27 @@ export interface PageResult<T> {
   size: number
   list: T[]
 }
+
+export interface ChatConversation {
+  id: number
+  tenantId: number
+  peerName: string
+  lastMessageContent?: string
+  lastMessageAt?: string
+  unreadCount: number
+}
+
+export interface ChatMessage {
+  id: number
+  conversationId: number
+  senderType: 'CUSTOMER' | 'MERCHANT'
+  senderId: number
+  content: string
+  createdAt: string
+  readAt?: string
+}
+
+export interface ChatHistory {
+  list: ChatMessage[]
+  nextBeforeId?: number
+}

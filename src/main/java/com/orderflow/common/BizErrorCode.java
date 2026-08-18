@@ -24,6 +24,8 @@ public enum BizErrorCode {
     IDEMPOTENCY_KEY_REQUIRED(40001, "缺少 Idempotency-Key 请求头"),
     CANCEL_NOT_ALLOWED(40906, "当前订单状态不允许取消"),
     LOCK_ACQUIRE_FAILED(40907, "系统繁忙，请稍后重试"),
+    CHAT_CONVERSATION_NOT_FOUND(40404, "会话不存在"),
+    CHAT_ACCESS_DENIED(40303, "无权访问该会话"),
     NOT_FOUND(40400, "资源不存在");
 
     private final int code;

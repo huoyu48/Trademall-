@@ -8,7 +8,7 @@
   基于 MyBatis-Plus 多租户拦截器在 SQL 层自动注入 `tenant_id`，租户之间数据彻底隔离，业务代码零侵入。
 
 - **高并发防超卖**
-  Redis 分布式锁锁住商品维度 + 数据库原子扣减双重防护，扣库存与建订单在同一事务边界内，要么都成、要么都回滚。
+  Redis 分布式锁串行化同一商家下单关键区 + 数据库条件更新双重防护，扣库存与建订单在同一事务边界内，要么都成、要么都回滚。
 
 - **订单状态机**
   订单生命周期 `CREATED → CONFIRMED → SHIPPED → COMPLETED`，终态 `CANCELLED`。状态只能沿允许的边流转，非法跳转被拒绝，流转全程可审计。
@@ -19,6 +19,9 @@
 - **订单超时自动取消**
   定时扫描超时未支付订单，自动取消并回补库存。
 
+- **顾客—商家实时咨询**
+  顾客从商品详情发起咨询，消息先持久化到 MySQL，再在事务提交后通过 WebSocket + STOMP 推送给顾客和对应商家；支持会话列表、未读数、历史消息分页与离线补拉，并按顾客身份和商家租户严格校验会话归属。
+
 - **可观测性**
   `/api/health` 端点逐项探活 MySQL / Redis / RabbitMQ；通知与死信结构化落库，便于排查。
 
@@ -26,7 +29,7 @@
 
 | 层 | 技术 |
 |----|------|
-| 后端 | Spring Boot 3.3.5 · Java 17 · MyBatis-Plus · Spring Security + JWT · Flyway |
+| 后端 | Spring Boot 3.3.5 · Java 17 · MyBatis-Plus · Spring Security + JWT · WebSocket/STOMP · Flyway |
 | 存储 / 中间件 | MySQL · Redis（分布式锁）· RabbitMQ（异步 + 死信） |
 | 前端 | Vue 3 · Vite · TypeScript · Element Plus · Pinia · ECharts |
 | 工程化 | Maven · Docker Compose · CI |
@@ -57,3 +60,4 @@ make stress  # 服务运行后，验证并发下单库存守恒
 | [PROJECT.md](docs/PROJECT.md) | 架构设计、核心流程、数据模型 |
 | [RUN.md](docs/RUN.md) | 运行手册：启动方式、端口、账号 |
 | [TECHNICAL_QA.md](docs/TECHNICAL_QA.md) | 技术问答：核心设计的常见问题与解答 |
+| [VERIFICATION.md](docs/VERIFICATION.md) | 本地测试与并发/实时消息验证记录 |

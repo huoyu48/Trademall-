@@ -96,6 +96,7 @@ const menus = [
   { path: '/promotions', title: '营销活动', icon: 'Tickets' },
   { path: '/orders', title: '订单管理', icon: 'List' },
   { path: '/refunds', title: '退款售后', icon: 'Wallet' }
+  ,{ path: '/chats', title: '客户咨询', icon: 'ChatDotRound' }
 ]
 
 const activePath = computed(() => '/' + (route.path.split('/')[1] || 'dashboard'))

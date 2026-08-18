@@ -52,7 +52,10 @@ orderflow:
     secret: "orderflow-default-secret-change-me-in-prod-0123456789abcdef"
     expiration-minutes: 720
   security:
-    permit-all: "/api/auth/login,/api/platform/auth/login,/api/customer/auth/login,/api/customer/auth/register,/api/actuator/**,/api/health"
+    permit-all: "/api/auth/login,/api/platform/auth/login,/api/customer/auth/login,/api/customer/auth/register,/api/ws/chat,/api/actuator/**,/api/health"
+  chat:
+    # 浏览器握手阶段仅放行来源；真正 JWT 鉴权在 STOMP CONNECT 帧的 Authorization 头完成。
+    allowed-origins: "http://localhost:*,http://127.0.0.1:*"
   customer:
     # 顾客在注册前没有租户上下文，统一归入商城默认租户；不能由前端指定。
     default-tenant-code: t-a

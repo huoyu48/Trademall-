@@ -25,6 +25,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'stores', name: 'stores', component: () => import('../views/StoreListView.vue'), meta: { title: '门店管理' } },
       { path: 'promotions', name: 'promotions', component: () => import('../views/PromotionListView.vue'), meta: { title: '营销活动' } },
       { path: 'refunds', name: 'refunds', component: () => import('../views/RefundListView.vue'), meta: { title: '退款售后' } }
+      ,{ path: 'chats', name: 'merchant-chats', component: () => import('../views/ChatListView.vue'), meta: { title: '客户咨询' } }
     ]
   },
 
@@ -49,6 +50,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'product/:id', name: 'shop-product', component: () => import('../views/shop/ShopProductDetail.vue'), meta: { title: '商品详情' } },
       { path: 'cart', name: 'shop-cart', component: () => import('../views/shop/ShopCart.vue'), meta: { title: '购物车' } },
       { path: 'orders', name: 'shop-orders', component: () => import('../views/shop/ShopMyOrders.vue'), meta: { title: '我的订单' } }
+      ,{ path: 'chat', name: 'shop-chat', component: () => import('../views/shop/ShopChatView.vue'), meta: { title: '咨询消息' } }
     ]
   },
 
