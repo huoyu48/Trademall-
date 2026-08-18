@@ -20,12 +20,12 @@ import com.orderflow.domain.mapper.OrderItemMapper;
 import com.orderflow.domain.mapper.OrderStatusHistoryMapper;
 import com.orderflow.domain.mapper.OrdersMapper;
 import com.orderflow.domain.mapper.ProductMapper;
+import com.orderflow.outbox.OutboxEventService;
 import com.orderflow.security.TenantContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,7 +48,7 @@ public class OrderServiceImpl implements OrderService {
     private final ProductMapper productMapper;
     private final InventoryMapper inventoryMapper;
     private final AuditLogService auditLogService;
-    private final ApplicationEventPublisher eventPublisher;
+    private final OutboxEventService outboxEventService;
     private final RedisLockService redisLock;
     private final RabbitTemplate rabbitTemplate;
     private final PromotionMapper promotionMapper;
@@ -59,7 +59,7 @@ public class OrderServiceImpl implements OrderService {
     public OrderServiceImpl(OrdersMapper ordersMapper, OrderItemMapper orderItemMapper,
                             OrderStatusHistoryMapper historyMapper, ProductMapper productMapper,
                             InventoryMapper inventoryMapper, AuditLogService auditLogService,
-                            ApplicationEventPublisher eventPublisher, RedisLockService redisLock,
+                            OutboxEventService outboxEventService, RedisLockService redisLock,
                             RabbitTemplate rabbitTemplate, PromotionMapper promotionMapper) {
         this.ordersMapper = ordersMapper;
         this.orderItemMapper = orderItemMapper;
@@ -67,7 +67,7 @@ public class OrderServiceImpl implements OrderService {
         this.productMapper = productMapper;
         this.inventoryMapper = inventoryMapper;
         this.auditLogService = auditLogService;
-        this.eventPublisher = eventPublisher;
+        this.outboxEventService = outboxEventService;
         this.redisLock = redisLock;
         this.rabbitTemplate = rabbitTemplate;
         this.promotionMapper = promotionMapper;
@@ -190,22 +190,17 @@ public class OrderServiceImpl implements OrderService {
             orderItemMapper.insert(oi);
         }
 
-        insertHistory(order.getId(), null, OrderStatus.CREATED.name(), "创建订单");
+        insertHistory(order.getId(), tenantId, null, OrderStatus.CREATED.name(), "创建订单");
         auditLogService.write("CREATE_ORDER", "order", String.valueOf(order.getId()),
                 null, "orderNo=" + order.getOrderNo());
 
-        // 发布本地事件，由 AFTER_COMMIT 监听器转发到 RabbitMQ
+        // 与订单在同一事务内写入 Outbox；后台任务收到 Broker 确认后才标记为已发送。
         List<OrderEventMessage.OrderEventItem> eventItems = items.stream().map(oi ->
                 OrderEventMessage.OrderEventItem.builder()
                         .productId(oi.getProductId())
                         .quantity(oi.getQuantity())
                         .build()).toList();
-        eventPublisher.publishEvent(OrderCreatedEvent.builder()
-                .orderId(order.getId())
-                .orderNo(order.getOrderNo())
-                .tenantId(tenantId)
-                .items(eventItems)
-                .build());
+        outboxEventService.recordOrderCreated(order, eventItems, org.slf4j.MDC.get("requestId"));
 
         return toDTO(order);
     }
@@ -285,9 +280,8 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public List<OrderDTO> listByCustomer(Long customerId) {
-        Long tenantId = TenantContext.getTenantId();
-        List<Orders> list = ordersMapper.selectList(new QueryWrapper<Orders>()
-                .eq("tenant_id", tenantId).eq("customer_id", customerId).orderByDesc("id"));
+        // 顾客可以在商城内跨商家下单，订单归属商家租户，但“我的订单”必须按顾客身份聚合。
+        List<Orders> list = ordersMapper.findByCustomerId(customerId);
         return list.stream().map(this::toDTO).toList();
     }
 
@@ -361,7 +355,7 @@ public class OrderServiceImpl implements OrderService {
         String from = order.getStatus();
         order.setStatus(target.name());
         ordersMapper.updateById(order);
-        insertHistory(orderId, from, target.name(), action);
+        insertHistory(orderId, tenantId, from, target.name(), action);
         auditLogService.write(action, "order", String.valueOf(orderId), "from=" + from, "to=" + target.name());
         return toDTO(order);
     }
@@ -375,9 +369,9 @@ public class OrderServiceImpl implements OrderService {
         return order;
     }
 
-    private void insertHistory(Long orderId, String from, String to, String remark) {
+    private void insertHistory(Long orderId, Long tenantId, String from, String to, String remark) {
         OrderStatusHistory h = new OrderStatusHistory();
-        h.setTenantId(TenantContext.getTenantId());
+        h.setTenantId(tenantId);
         h.setOrderId(orderId);
         h.setFromStatus(from);
         h.setToStatus(to);

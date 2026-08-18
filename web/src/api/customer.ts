@@ -37,8 +37,10 @@ export function productDetail(id: number) {
   return http.get<Product>(`/customer/products/${id}`)
 }
 
-export function createOrder(items: { productId: number; quantity: number }[], promoCode?: string) {
-  return http.post<Order>('/customer/orders', { items, promoCode })
+export function createOrder(items: { productId: number; quantity: number }[], promoCode?: string, idempotencyKey?: string) {
+  return http.post<Order>('/customer/orders', { items, promoCode }, {
+    headers: { 'Idempotency-Key': idempotencyKey || crypto.randomUUID() }
+  })
 }
 
 export function myOrders() {

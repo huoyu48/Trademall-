@@ -8,19 +8,21 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("notification")
-public class Notification {
+@TableName("outbox_event")
+public class OutboxEvent {
     @TableId(type = IdType.AUTO)
     private Long id;
     private String eventId;
     private Long tenantId;
-    /** 关联订单，非订单类事件（如库存告警）为 null */
-    private Long orderId;
-    /** 关联商品，非商品类事件为 null */
-    private Long productId;
+    private String aggregateType;
+    private Long aggregateId;
     private String eventType;
-    private String channel;
-    private String content;
-    private Integer status;
+    private String payload;
+    private String status;
+    private Integer retryCount;
+    private LocalDateTime nextRetryAt;
+    private String lastError;
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+    private LocalDateTime sentAt;
 }

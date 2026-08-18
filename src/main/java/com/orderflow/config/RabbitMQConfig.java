@@ -85,6 +85,8 @@ public class RabbitMQConfig {
     public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory, MessageConverter converter) {
         RabbitTemplate template = new RabbitTemplate(connectionFactory);
         template.setMessageConverter(converter);
+        // Outbox 发布端需要“路由失败可感知”，不能把不可达消息误记为已成功投递。
+        template.setMandatory(true);
         return template;
     }
 

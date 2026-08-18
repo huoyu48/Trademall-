@@ -3,7 +3,7 @@ package com.orderflow.security;
 /**
  * 租户上下文：基于 ThreadLocal 保存当前请求的身份与租户信息。
  * 注意：异步线程（@Async / MQ 消费 / AFTER_COMMIT 监听器）不会自动继承，
- * 跨线程时必须显式传递 tenantId（见 OrderEventAfterCommitListener）。
+ * 跨线程时必须显式传递 tenantId（例如 Outbox 事件载荷）。
  */
 public class TenantContext {
     private static final ThreadLocal<Long> TENANT_ID = new ThreadLocal<>();

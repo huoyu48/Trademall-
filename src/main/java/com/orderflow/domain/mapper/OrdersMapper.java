@@ -19,6 +19,11 @@ public interface OrdersMapper extends BaseMapper<Orders> {
     @Select("SELECT * FROM orders WHERE tenant_id = #{tenantId} AND order_no = #{orderNo} LIMIT 1")
     Orders findByOrderNo(@Param("tenantId") Long tenantId, @Param("orderNo") String orderNo);
 
+    /** 顾客订单跨商家展示，调用方必须已按 JWT customerId 完成身份校验。 */
+    @InterceptorIgnore(tenantLine = "true")
+    @Select("SELECT * FROM orders WHERE customer_id = #{customerId} ORDER BY id DESC")
+    List<Orders> findByCustomerId(@Param("customerId") Long customerId);
+
     @InterceptorIgnore(tenantLine = "true")
     @Select("SELECT * FROM orders WHERE status = 'CREATED' AND created_at < #{cutoff}")
     List<Orders> findTimedOut(@Param("cutoff") java.time.LocalDateTime cutoff);

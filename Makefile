@@ -1,7 +1,7 @@
 # OrderFlow 常用命令入口
 # 用法：make <target>，或直接看 make help
 
-.PHONY: help infra build run stop test clean
+.PHONY: help infra build run stop test stress clean
 
 MVN ?= ./mvnw
 
@@ -12,6 +12,7 @@ help: ## 显示所有可用命令
 	@echo "  make run      一键启动全栈（docker compose）"
 	@echo "  make stop     停止全栈并释放资源"
 	@echo "  make test     运行端到端冒烟测试"
+	@echo "  make stress   运行并发下单库存守恒验证（需先 make run）"
 	@echo "  make clean    清理构建产物"
 
 infra: ## 仅启动中间件
@@ -29,6 +30,9 @@ stop: ## 停止全栈
 
 test: ## 端到端冒烟测试
 	./scripts/smoke-test.sh
+
+stress: ## 并发下单库存守恒验证
+	./scripts/concurrency-test.sh
 
 clean: ## 清理构建产物
 	$(MVN) clean

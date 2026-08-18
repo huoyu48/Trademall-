@@ -71,6 +71,8 @@ import { centToYuan } from '../../utils/money'
 const cart = useCartStore()
 const router = useRouter()
 const submitting = ref(false)
+// 同一次结算失败后再次点击会沿用同一 Key；成功后才清除，避免网络重试重复创建订单。
+const checkoutKeys = ref<Record<number, string>>({})
 
 /** 展示所有分组（含未勾选的，便于整组展示；结算只看 checkedGroups） */
 const allGroups = computed<StoreGroup[]>(() => {
@@ -100,8 +102,10 @@ async function checkout() {
     // 按商家逐个下单（拆单）
     for (const g of groups) {
       const items = g.items.map((i) => ({ productId: i.productId, quantity: i.quantity }))
-      await createOrder(items)
+      const key = checkoutKeys.value[g.storeId] ||= crypto.randomUUID()
+      await createOrder(items, undefined, key)
       g.items.forEach((i) => cart.remove(i.productId))
+      delete checkoutKeys.value[g.storeId]
     }
     ElMessage.success(`已按商家拆分为 ${groups.length} 笔订单`)
     router.push('/shop/orders')

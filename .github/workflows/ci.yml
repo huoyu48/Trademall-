@@ -23,8 +23,8 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Build backend (skip tests)
-        run: mvn -q -DskipTests clean package
+      - name: Test and build backend
+        run: mvn -q clean test package
 
       - name: Build frontend
         working-directory: web

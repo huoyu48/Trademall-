@@ -60,6 +60,9 @@ orderflow:
     timeout-minutes: 30
   inventory:
     low-stock-threshold: 10
+  outbox:
+    batch-size: 100
+    publish-interval-ms: 3000
 
 management:
   endpoints:

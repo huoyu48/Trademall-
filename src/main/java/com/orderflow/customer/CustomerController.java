@@ -14,6 +14,7 @@ import com.orderflow.product.ProductDTO;
 import com.orderflow.product.ProductService;
 import com.orderflow.security.LoginUser;
 import com.orderflow.security.SecurityUtils;
+import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,10 +22,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/customer")
@@ -74,7 +75,8 @@ public class CustomerController {
      */
     @PostMapping("/orders")
     @PreAuthorize("hasRole('CUSTOMER')")
-    public ApiResponse<OrderDTO> createOrder(@RequestBody CustomerOrderRequest req) {
+    public ApiResponse<OrderDTO> createOrder(@Valid @RequestBody CustomerOrderRequest req,
+                                             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
         LoginUser me = SecurityUtils.current();
         List<Long> productIds = req.getItems().stream().map(CreateOrderRequest.OrderItemRequest::getProductId).toList();
         List<Product> products = productService.listByIds(productIds);
@@ -93,7 +95,7 @@ public class CustomerController {
         cor.setPromoCode(req.getPromoCode());
         cor.setItems(req.getItems());
         cor.setCustomerId(me.getUserId());
-        return ApiResponse.success(orderService.create(cor, UUID.randomUUID().toString(), orderTenantId));
+        return ApiResponse.success(orderService.create(cor, idempotencyKey, orderTenantId));
     }
 
     /** 我的订单：按顾客身份查全部订单（跨租户） */
