@@ -62,6 +62,7 @@ make stress  # 服务运行后，验证并发下单库存守恒
 | [FILES.md](FILES.md) | 逐文件说明：每个文件 / 目录的作用 |
 | [PROJECT.md](docs/PROJECT.md) | 架构设计、核心流程、数据模型 |
 | [RUN.md](docs/RUN.md) | 运行手册：启动方式、端口、账号 |
+| [CHANGELOG.md](docs/CHANGELOG.md) | 重要提交的改动说明与项目演进记录 |
 | [TECHNICAL_QA.md](docs/TECHNICAL_QA.md) | 技术问答：核心设计的常见问题与解答 |
 | [PAYMENT.md](docs/PAYMENT.md) | 模拟支付流程与支付专题面试题 |
 | [VERIFICATION.md](docs/VERIFICATION.md) | 本地测试与并发/实时消息验证记录 |
