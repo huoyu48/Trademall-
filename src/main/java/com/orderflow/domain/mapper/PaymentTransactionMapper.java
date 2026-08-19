@@ -19,6 +19,13 @@ public interface PaymentTransactionMapper extends BaseMapper<PaymentTransaction>
     @Select("SELECT * FROM payment_transaction WHERE payment_token = #{paymentToken} AND provider = 'MOCK' LIMIT 1")
     PaymentTransaction findMockByToken(@Param("paymentToken") String paymentToken);
 
+    /**
+     * 订单详情只读取安全支付摘要。调用方已经通过订单归属校验，故跨租户读取时不依赖当前顾客租户。
+     */
+    @InterceptorIgnore(tenantLine = "true")
+    @Select("SELECT * FROM payment_transaction WHERE order_id = #{orderId} ORDER BY id DESC LIMIT 1")
+    PaymentTransaction findLatestByOrderId(@Param("orderId") Long orderId);
+
     @InterceptorIgnore(tenantLine = "true")
     @Update("UPDATE payment_transaction SET status = 'SUCCESS', provider_trade_no = #{providerTradeNo}, " +
             "callback_payload = #{payload}, paid_at = NOW() WHERE id = #{id} AND status = 'PENDING'")
@@ -43,4 +50,8 @@ public interface PaymentTransactionMapper extends BaseMapper<PaymentTransaction>
     @InterceptorIgnore(tenantLine = "true")
     @Update("UPDATE payment_transaction SET status = 'CLOSED' WHERE order_id = #{orderId} AND status = 'PENDING' AND provider <> 'MOCK'")
     int closeLegacyPendingByOrderId(@Param("orderId") Long orderId);
+
+    @InterceptorIgnore(tenantLine = "true")
+    @Update("UPDATE payment_transaction SET status = 'REFUNDED' WHERE order_id = #{orderId} AND status = 'SUCCESS'")
+    int markRefundedByOrderId(@Param("orderId") Long orderId);
 }

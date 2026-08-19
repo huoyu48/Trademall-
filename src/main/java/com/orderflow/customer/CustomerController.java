@@ -16,6 +16,8 @@ import com.orderflow.payment.PaymentStatusDTO;
 import com.orderflow.payment.PaymentService;
 import com.orderflow.product.ProductDTO;
 import com.orderflow.product.ProductService;
+import com.orderflow.refund.RefundService;
+import com.orderflow.domain.entity.Refund;
 import com.orderflow.security.LoginUser;
 import com.orderflow.security.SecurityUtils;
 import jakarta.validation.Valid;
@@ -39,13 +41,16 @@ public class CustomerController {
     private final OrderService orderService;
     private final CategoryService categoryService;
     private final PaymentService paymentService;
+    private final RefundService refundService;
 
     public CustomerController(ProductService productService, OrderService orderService,
-                              CategoryService categoryService, PaymentService paymentService) {
+                              CategoryService categoryService, PaymentService paymentService,
+                              RefundService refundService) {
         this.productService = productService;
         this.orderService = orderService;
         this.categoryService = categoryService;
         this.paymentService = paymentService;
+        this.refundService = refundService;
     }
 
     /**
@@ -121,6 +126,15 @@ public class CustomerController {
         OrderDTO order = orderService.cancelPendingPaymentByCustomer(id, me.getUserId());
         paymentService.closePendingPayments(id);
         return ApiResponse.success(order);
+    }
+
+    /** 顾客退款只创建申请；商家在退款售后中确认模拟退款后才最终退款。 */
+    @PostMapping("/orders/{id}/refunds")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ApiResponse<Refund> applyRefund(@PathVariable Long id,
+                                            @RequestParam(required = false) String reason) {
+        LoginUser me = SecurityUtils.current();
+        return ApiResponse.success(refundService.applyByCustomer(id, me.getUserId(), reason));
     }
 
     /** 我的订单：按顾客身份查全部订单（跨租户） */

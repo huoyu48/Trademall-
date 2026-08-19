@@ -21,6 +21,8 @@ public class Refund {
     private String reason;
     private Long refundAmountCent;
     private String status;
+    /** 退款驳回时用于把订单恢复到申请前状态。 */
+    private String originalOrderStatus;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE)

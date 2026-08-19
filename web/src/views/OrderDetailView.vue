@@ -19,6 +19,15 @@
           <span style="color:#f5222d;font-weight:600">-¥{{ centToYuan(order.discountAmountCent) }}</span>
         </el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ order.createdAt }}</el-descriptions-item>
+        <template v-if="order.payment">
+          <el-descriptions-item label="支付状态">
+            <el-tag :type="paymentStatusType(order.payment.status)">{{ paymentStatusLabel(order.payment.status) }}</el-tag>
+            <span class="payment-provider">{{ paymentProviderLabel(order.payment.provider) }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="实付金额">¥{{ centToYuan(order.payment.amountCent) }}</el-descriptions-item>
+          <el-descriptions-item label="支付时间">{{ order.payment.paidAt || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="平台支付流水号">{{ order.payment.paymentNo }}</el-descriptions-item>
+        </template>
       </el-descriptions>
 
       <!-- 状态机步骤条 -->
@@ -41,7 +50,7 @@
       </el-table>
 
       <div class="actions" v-if="actions.length">
-        <el-button v-for="a in actions" :key="a" :type="a === 'cancel' ? 'danger' : 'primary'"
+        <el-button v-for="a in actions" :key="a" :type="a === 'cancel' ? 'danger' : a === 'refund' ? 'warning' : 'primary'"
           @click="doTransition(a)">{{ TRANSITION_LABEL[a] }}</el-button>
       </div>
       <el-alert v-else class="mt" title="当前状态无可用操作" type="info" :closable="false" />
@@ -71,6 +80,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getOrder, transitionOrder, getOrderHistory } from '../api/order'
+import { applyRefund } from '../api/refund'
 import { centToYuan } from '../utils/money'
 import { ORDER_STATUS as statusMap, TRANSITIONS, TRANSITION_LABEL } from '../constants/order'
 
@@ -95,6 +105,16 @@ const stepActive = computed(() => {
 const stepProcessStatus = computed(() => (order.value?.status === 'CANCELLED' ? 'error' : 'process'))
 const actions = computed(() => (order.value ? TRANSITIONS[order.value.status] || [] : []))
 
+function paymentStatusLabel(status?: string) {
+  return ({ PENDING: '待付款', SUCCESS: '已付款', CLOSED: '已关闭', REFUNDED: '已退款' } as Record<string, string>)[status || ''] || status || '未知'
+}
+function paymentStatusType(status?: string) {
+  return ({ PENDING: 'warning', SUCCESS: 'success', CLOSED: 'info', REFUNDED: 'success' } as Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'>)[status || ''] || 'info'
+}
+function paymentProviderLabel(provider?: string) {
+  return provider === 'MOCK' ? '模拟付款（演示）' : provider || '—'
+}
+
 async function load() {
   loading.value = true
   try {
@@ -103,7 +123,19 @@ async function load() {
     history.value = h || []
   } finally { loading.value = false }
 }
-async function doTransition(action: 'confirm' | 'ship' | 'complete' | 'cancel') {
+async function doTransition(action: 'confirm' | 'ship' | 'complete' | 'cancel' | 'refund') {
+  if (action === 'refund') {
+    await ElMessageBox.confirm(
+      `确认对订单 ${order.value.orderNo} 发起模拟退款？退款确认后，未发货订单会释放预占库存。`,
+      '发起模拟退款', { type: 'warning' }
+    )
+    try {
+      await applyRefund(order.value.id, '商家发起模拟退款')
+      ElMessage.success('退款申请已提交，请在退款售后中确认模拟退款')
+      load()
+    } catch { /* 后端会校验订单状态 */ }
+    return
+  }
   await ElMessageBox.confirm(`确认对订单 ${order.value.orderNo} 执行「${TRANSITION_LABEL[action]}」？`, '提示', { type: 'warning' })
   try {
     await transitionOrder(order.value.id, action)
@@ -119,4 +151,5 @@ onMounted(load)
 .actions { margin-top: 16px; display: flex; gap: 12px; }
 .hist { display: inline-flex; align-items: center; gap: 6px; }
 .remark { color: #888; margin-left: 4px; }
+.payment-provider { margin-left: 8px; color: #909399; font-size: 12px; }
 </style>

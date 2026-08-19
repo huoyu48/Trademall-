@@ -9,7 +9,7 @@
     <!-- 核心指标 -->
     <div class="stat-grid">
       <StatCard
-        title="今日订单"
+        title="今日已付款订单"
         :value="stats.todayCount"
         icon="Document"
         color="#4f46e5"

@@ -41,7 +41,7 @@ public interface OrderService {
 
     OrderDTO finishRefund(Long orderId);
 
-    OrderDTO closeRefund(Long orderId);
+    OrderDTO closeRefund(Long orderId, OrderStatus originalStatus);
 
     /** 顾客端：查询某顾客在本租户下的全部订单 */
     List<OrderDTO> listByCustomer(Long customerId);

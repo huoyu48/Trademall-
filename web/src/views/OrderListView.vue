@@ -25,6 +25,16 @@
           <el-tag :type="statusMap[row.status]?.type || 'info'">{{ statusMap[row.status]?.label || row.status }}</el-tag>
         </template>
       </el-table-column>
+      <el-table-column label="支付信息" min-width="200">
+        <template #default="{ row }">
+          <template v-if="row.payment">
+            <el-tag size="small" :type="paymentStatusType(row.payment.status)">{{ paymentStatusLabel(row.payment.status) }}</el-tag>
+            <span v-if="row.payment.paidAt" class="payment-time">{{ row.payment.paidAt }}</span>
+            <span v-else class="payment-time">{{ paymentProviderLabel(row.payment.provider) }}</span>
+          </template>
+          <span v-else class="payment-time">未发起付款</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="createdAt" label="创建时间" width="180" />
       <el-table-column label="操作" width="100">
         <template #default="{ row }">
@@ -51,6 +61,16 @@ const loading = ref(false)
 const rows = ref<any[]>([])
 const total = ref(0)
 const q = reactive({ page: 1, size: 10, orderNo: '', status: '' as string })
+
+function paymentStatusLabel(status?: string) {
+  return ({ PENDING: '待付款', SUCCESS: '已付款', CLOSED: '已关闭', REFUNDED: '已退款' } as Record<string, string>)[status || ''] || status || '未知'
+}
+function paymentStatusType(status?: string) {
+  return ({ PENDING: 'warning', SUCCESS: 'success', CLOSED: 'info', REFUNDED: 'success' } as Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'>)[status || ''] || 'info'
+}
+function paymentProviderLabel(provider?: string) {
+  return provider === 'MOCK' ? '模拟付款（演示）' : provider || '—'
+}
 
 async function load(p = q.page) {
   q.page = p
@@ -79,4 +99,5 @@ watch(
 <style scoped>
 .filter { margin-bottom: 12px; }
 .mt { margin-top: 12px; }
+.payment-time { margin-left: 8px; color: #909399; font-size: 12px; }
 </style>

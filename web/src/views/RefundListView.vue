@@ -1,6 +1,6 @@
 <template>
   <div>
-    <PageHeader title="退款售后" subtitle="处理订单退款申请，支持审核通过与驳回，状态全程可追溯">
+    <PageHeader title="退款售后" subtitle="处理已付款订单的模拟退款；确认后订单进入已退款，未发货订单释放预占库存">
       <template #actions>
         <el-button type="primary" @click="openApply">+ 发起退款</el-button>
       </template>
@@ -25,7 +25,7 @@
         <el-table-column label="操作" width="160">
           <template #default="{ row }">
             <template v-if="row.status === 'PENDING'">
-              <el-button link type="success" @click="approve(row)">通过</el-button>
+              <el-button link type="success" @click="approve(row)">确认模拟退款</el-button>
               <el-button link type="danger" @click="reject(row)">驳回</el-button>
             </template>
             <el-button v-else link type="primary" @click="detail(row)">详情</el-button>
@@ -105,9 +105,9 @@ async function doApply() {
   }
 }
 async function approve(row: any) {
-  await ElMessageBox.confirm(`确认通过退款单 ${row.refundNo}？`, '提示', { type: 'warning' })
+  await ElMessageBox.confirm(`确认完成模拟退款单 ${row.refundNo}？`, '提示', { type: 'warning' })
   await approveRefund(row.id)
-  ElMessage.success('已通过')
+  ElMessage.success('模拟退款已完成')
   load()
 }
 async function reject(row: any) {

@@ -12,6 +12,7 @@ import com.orderflow.domain.entity.Inventory;
 import com.orderflow.domain.entity.OrderItem;
 import com.orderflow.domain.entity.OrderStatusHistory;
 import com.orderflow.domain.entity.Orders;
+import com.orderflow.domain.entity.PaymentTransaction;
 import com.orderflow.domain.entity.Product;
 import com.orderflow.domain.entity.Promotion;
 import com.orderflow.domain.entity.Store;
@@ -20,6 +21,7 @@ import com.orderflow.domain.mapper.InventoryMapper;
 import com.orderflow.domain.mapper.OrderItemMapper;
 import com.orderflow.domain.mapper.OrderStatusHistoryMapper;
 import com.orderflow.domain.mapper.OrdersMapper;
+import com.orderflow.domain.mapper.PaymentTransactionMapper;
 import com.orderflow.domain.mapper.ProductMapper;
 import com.orderflow.domain.mapper.StoreMapper;
 import com.orderflow.outbox.OutboxEventService;
@@ -61,6 +63,7 @@ public class OrderServiceImpl implements OrderService {
     private final RabbitTemplate rabbitTemplate;
     private final PromotionMapper promotionMapper;
     private final StoreMapper storeMapper;
+    private final PaymentTransactionMapper paymentMapper;
 
     @Value("${orderflow.inventory.low-stock-threshold:10}")
     private int lowStockThreshold;
@@ -70,7 +73,7 @@ public class OrderServiceImpl implements OrderService {
                             InventoryMapper inventoryMapper, AuditLogService auditLogService,
                             OutboxEventService outboxEventService, RedisLockService redisLock,
                             RabbitTemplate rabbitTemplate, PromotionMapper promotionMapper,
-                            StoreMapper storeMapper) {
+                            StoreMapper storeMapper, PaymentTransactionMapper paymentMapper) {
         this.ordersMapper = ordersMapper;
         this.orderItemMapper = orderItemMapper;
         this.historyMapper = historyMapper;
@@ -82,6 +85,7 @@ public class OrderServiceImpl implements OrderService {
         this.rabbitTemplate = rabbitTemplate;
         this.promotionMapper = promotionMapper;
         this.storeMapper = storeMapper;
+        this.paymentMapper = paymentMapper;
     }
 
     @Override
@@ -482,13 +486,17 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderDTO finishRefund(Long orderId) {
-        return transit(orderId, OrderStatus.REFUNDED, "FINISH_REFUND", false);
+        Orders order = requireOrder(orderId);
+        // 未发货退款才释放此前预占的库存；已发货订单应在退货入库后另行回补。
+        boolean releaseInventory = OrderStatus.PAID.name().equals(order.getStatus())
+                || OrderStatus.CONFIRMED.name().equals(order.getStatus());
+        return transit(orderId, OrderStatus.REFUNDED, "FINISH_REFUND", releaseInventory);
     }
 
     @Override
     @Transactional
-    public OrderDTO closeRefund(Long orderId) {
-        return transit(orderId, OrderStatus.CANCELLED, "CLOSE_REFUND", false);
+    public OrderDTO closeRefund(Long orderId, OrderStatus originalStatus) {
+        return transit(orderId, originalStatus, "REJECT_REFUND", false);
     }
 
     @Override
@@ -535,7 +543,7 @@ public class OrderServiceImpl implements OrderService {
         dto.setTotalCount(total);
         dto.setPendingCount(pending);
         dto.setCompletedCount(completed);
-        dto.setTodayCount(ordersMapper.countToday(tenantId));
+        dto.setTodayCount(ordersMapper.countTodayPaid(tenantId));
         dto.setTotalSalesCent(ordersMapper.sumCompletedSales(tenantId));
         List<Map<String, Object>> ds = ordersMapper.dailyStats(tenantId, LocalDateTime.now().minusDays(7));
         List<OrderStatsDTO.DailyStat> days = new ArrayList<>();
@@ -557,6 +565,11 @@ public class OrderServiceImpl implements OrderService {
             throw new BizException(BizErrorCode.INVALID_ORDER_STATUS_TRANSITION);
         }
 
+        // 先条件更新状态，再执行库存或支付相关副作用；只有赢家可以继续。
+        if (ordersMapper.transitionStatus(orderId, tenantId, current.name(), target.name()) != 1) {
+            throw new BizException(BizErrorCode.INVALID_ORDER_STATUS_TRANSITION);
+        }
+
         if (releaseInventory) {
             List<OrderItem> items = orderItemMapper.selectList(
                     new QueryWrapper<OrderItem>().eq("order_id", orderId));
@@ -567,7 +580,6 @@ public class OrderServiceImpl implements OrderService {
 
         String from = order.getStatus();
         order.setStatus(target.name());
-        ordersMapper.updateById(order);
         insertHistory(orderId, tenantId, from, target.name(), action);
         auditLogService.write(action, "order", String.valueOf(orderId), "from=" + from, "to=" + target.name());
         return toDTO(order);
@@ -610,6 +622,17 @@ public class OrderServiceImpl implements OrderService {
         dto.setPromoCode(order.getPromoCode());
         dto.setDiscountAmountCent(order.getDiscountAmountCent());
         dto.setCreatedAt(order.getCreatedAt());
+
+        PaymentTransaction payment = paymentMapper.findLatestByOrderId(order.getId());
+        if (payment != null) {
+            OrderDTO.PaymentInfoDTO paymentDto = new OrderDTO.PaymentInfoDTO();
+            paymentDto.setPaymentNo(payment.getOutTradeNo());
+            paymentDto.setProvider(payment.getProvider());
+            paymentDto.setStatus(payment.getStatus());
+            paymentDto.setAmountCent(payment.getAmountCent());
+            paymentDto.setPaidAt(payment.getPaidAt());
+            dto.setPayment(paymentDto);
+        }
 
         List<OrderItem> items = orderItemMapper.selectList(
                 new QueryWrapper<OrderItem>().eq("order_id", order.getId()));

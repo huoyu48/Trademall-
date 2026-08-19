@@ -50,6 +50,8 @@
                      @click.stop="pay(o)">模拟付款</el-button>
           <el-button v-if="o.status === 'PENDING_PAYMENT'" type="danger" plain size="small" :loading="cancellingOrderId === o.id"
                      @click.stop="cancelOrder(o)">取消订单</el-button>
+          <el-button v-if="canApplyRefund(o.status)" type="warning" plain size="small" :loading="refundingOrderId === o.id"
+                     @click.stop="openRefund(o)">申请退款</el-button>
           <el-button class="contact-merchant-btn" size="small" @click.stop="contactMerchant(o)">
             <el-icon><ChatDotRound /></el-icon> 联系商家
           </el-button>
@@ -65,6 +67,16 @@
         <p class="payment-hint">支付成功后，订单会自动更新为“已付款，待商家确认”</p>
       </div>
     </el-dialog>
+
+    <el-dialog v-model="refundDialogVisible" title="申请退款" width="420px" align-center>
+      <el-alert type="warning" :closable="false" show-icon title="提交后订单将进入退款中，等待商家确认模拟退款。" />
+      <el-input v-model="refundReason" class="refund-reason" type="textarea" :rows="3" maxlength="120" show-word-limit
+                placeholder="请填写退款原因，例如：商品不需要了" />
+      <template #footer>
+        <el-button @click="refundDialogVisible = false">暂不申请</el-button>
+        <el-button type="warning" :loading="refundingOrderId !== null" @click="submitRefund">提交退款申请</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -73,7 +85,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '../../components/PageHeader.vue'
-import { cancelPendingPaymentOrder, createMockCheckout, myOrders, paymentStatus } from '../../api/customer'
+import { applyCustomerRefund, cancelPendingPaymentOrder, createMockCheckout, myOrders, paymentStatus } from '../../api/customer'
 import { customerChatApi } from '../../api/chat'
 import { centToYuan } from '../../utils/money'
 import type { Order } from '../../types'
@@ -83,6 +95,10 @@ const orders = ref<Order[]>([])
 const activeTab = ref('all')
 const payingOrderId = ref<number | null>(null)
 const cancellingOrderId = ref<number | null>(null)
+const refundingOrderId = ref<number | null>(null)
+const refundDialogVisible = ref(false)
+const refundOrder = ref<Order | null>(null)
+const refundReason = ref('')
 const paymentDialogVisible = ref(false)
 const paymentQrCodeImage = ref('')
 const paymentAmount = ref('0.00')
@@ -129,6 +145,10 @@ function countBy(key: string) {
 
 function itemCount(o: Order) {
   return o.items.reduce((n, it) => n + it.quantity, 0)
+}
+
+function canApplyRefund(status: string) {
+  return ['PAID', 'CONFIRMED', 'SHIPPED', 'COMPLETED'].includes(status)
 }
 
 function formatTime(t?: string) {
@@ -178,6 +198,26 @@ async function cancelOrder(order: Order) {
     await loadOrders()
   } finally {
     cancellingOrderId.value = null
+  }
+}
+
+function openRefund(order: Order) {
+  refundOrder.value = order
+  refundReason.value = ''
+  refundDialogVisible.value = true
+}
+
+async function submitRefund() {
+  const order = refundOrder.value
+  if (!order) return
+  refundingOrderId.value = order.id
+  try {
+    await applyCustomerRefund(order.id, refundReason.value)
+    ElMessage.success('退款申请已提交，等待商家确认')
+    refundDialogVisible.value = false
+    await loadOrders()
+  } finally {
+    refundingOrderId.value = null
   }
 }
 
@@ -274,4 +314,5 @@ onUnmounted(stopPaymentPolling)
 .payment-qr-code { display: block; width: 280px; height: 280px; margin: 14px auto; border: 8px solid #fff; border-radius: 10px; box-shadow: 0 3px 16px rgba(15, 23, 42, 0.12); }
 .payment-amount { color: #ef4444; font-size: 20px; font-weight: 700; margin: 8px 0; }
 .payment-hint { color: var(--of-text-3); font-size: 12px; line-height: 1.6; }
+.refund-reason { margin-top: 16px; }
 </style>

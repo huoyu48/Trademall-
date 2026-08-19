@@ -88,6 +88,10 @@ export function cancelPendingPaymentOrder(id: number) {
   return http.post<Order>(`/customer/orders/${id}/cancel`)
 }
 
+export function applyCustomerRefund(id: number, reason?: string) {
+  return http.post<any>(`/customer/orders/${id}/refunds`, undefined, { params: { reason } })
+}
+
 export function myOrders() {
   return http.get<Order[]>('/customer/orders')
 }

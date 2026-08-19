@@ -11,13 +11,13 @@ export const ORDER_STATUS: Record<string, { label: string; type: 'primary' | 'su
 }
 
 // 状态机允许的流转动作
-export const TRANSITIONS: Record<string, ('confirm' | 'ship' | 'complete' | 'cancel')[]> = {
+export const TRANSITIONS: Record<string, ('confirm' | 'ship' | 'complete' | 'cancel' | 'refund')[]> = {
   PENDING_PAYMENT: [],
-  PAID: ['confirm', 'cancel'],
+  PAID: ['confirm', 'refund'],
   CREATED: ['confirm', 'cancel'],
-  CONFIRMED: ['ship', 'cancel'],
-  SHIPPED: ['complete'],
-  COMPLETED: [],
+  CONFIRMED: ['ship', 'refund'],
+  SHIPPED: ['complete', 'refund'],
+  COMPLETED: ['refund'],
   CANCELLED: []
 }
 
@@ -25,5 +25,6 @@ export const TRANSITION_LABEL: Record<string, string> = {
   confirm: '确认订单',
   ship: '发货',
   complete: '完成订单',
-  cancel: '取消订单'
+  cancel: '取消订单',
+  refund: '发起模拟退款'
 }
