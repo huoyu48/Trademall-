@@ -3,6 +3,8 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 const routes: RouteRecordRaw[] = [
   // ===== 统一登录页（三端入口：商家 / 平台 / 顾客）=====
   { path: '/login', name: 'login', component: () => import('../views/UnifiedLoginView.vue'), meta: { public: true } },
+  // 手机扫描付款码后打开的项目内模拟收银台，不要求登录。
+  { path: '/mock-pay', name: 'mock-pay', component: () => import('../views/MockPaymentView.vue'), meta: { public: true } },
   // 旧独立登录页地址，重定向到统一页并选中对应身份
   { path: '/platform/login', redirect: { path: '/login', query: { role: 'platform' } } },
   { path: '/shop/login', redirect: { path: '/login', query: { role: 'customer' } } },

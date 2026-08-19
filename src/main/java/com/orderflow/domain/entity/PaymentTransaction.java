@@ -21,7 +21,9 @@ public class PaymentTransaction {
     private Long amountCent;
     private String status;
     private String qrCode;
-    private String alipayTradeNo;
+    private String paymentToken;
+    private LocalDateTime expiresAt;
+    private String providerTradeNo;
     private String callbackPayload;
     private LocalDateTime paidAt;
     @TableField(fill = FieldFill.INSERT)

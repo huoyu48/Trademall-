@@ -53,8 +53,8 @@ public class OrderTimeoutScheduler {
             try {
                 TenantContext.set(order.getTenantId(), order.getCreatedBy(), "scheduler");
                 orderService.cancel(order.getId());
-                // 本地状态与库存先原子回滚；随后尽力关闭支付宝侧同一笔交易，避免继续付款。
-                paymentService.closePendingAlipayPayment(order);
+                // 本地状态与库存先原子回滚；随后关闭仍待支付的模拟付款码。
+                paymentService.closePendingPayments(order.getId());
                 log.info("订单 {} 已超时自动取消", order.getOrderNo());
             } catch (BizException e) {
                 log.warn("订单 {} 自动取消被拒绝：{}", order.getOrderNo(), e.getMessage());

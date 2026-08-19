@@ -2,9 +2,9 @@ package com.orderflow.payment;
 
 import lombok.Data;
 
-/** 返回给商城的支付宝沙箱二维码；二维码内容由后端生成，前端不参与签名。 */
+/** 电脑端展示模拟付款二维码所需的数据。 */
 @Data
-public class AlipayCheckoutDTO {
+public class MockCheckoutDTO {
     private String paymentNo;
     private Long amountCent;
     private String qrCodeImage;

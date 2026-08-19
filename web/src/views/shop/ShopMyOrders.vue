@@ -47,7 +47,7 @@
             ，合计 <b>¥ {{ centToYuan(o.totalAmountCent) }}</b>
           </span>
           <el-button v-if="o.status === 'PENDING_PAYMENT'" type="primary" size="small" :loading="payingOrderId === o.id"
-                     @click.stop="pay(o)">支付宝付款</el-button>
+                     @click.stop="pay(o)">模拟付款</el-button>
           <el-button v-if="o.status === 'PENDING_PAYMENT'" type="danger" plain size="small" :loading="cancellingOrderId === o.id"
                      @click.stop="cancelOrder(o)">取消订单</el-button>
           <el-button class="contact-merchant-btn" size="small" @click.stop="contactMerchant(o)">
@@ -57,10 +57,10 @@
       </div>
     </div>
 
-    <el-dialog v-model="paymentDialogVisible" title="支付宝沙箱付款" width="390px" align-center @closed="stopPaymentPolling">
+    <el-dialog v-model="paymentDialogVisible" title="模拟扫码付款" width="390px" align-center @closed="stopPaymentPolling">
       <div class="payment-dialog">
-        <p>请使用支付宝沙箱版 App 扫描二维码完成模拟付款</p>
-        <img v-if="paymentQrCodeImage" class="payment-qr-code" :src="paymentQrCodeImage" alt="支付宝付款二维码" />
+        <p>请用手机扫描二维码，在项目模拟收银台确认付款</p>
+        <img v-if="paymentQrCodeImage" class="payment-qr-code" :src="paymentQrCodeImage" alt="模拟付款二维码" />
         <p class="payment-amount">应付 ¥ {{ paymentAmount }}</p>
         <p class="payment-hint">支付成功后，订单会自动更新为“已付款，待商家确认”</p>
       </div>
@@ -73,7 +73,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '../../components/PageHeader.vue'
-import { alipayPaymentStatus, cancelPendingPaymentOrder, createAlipayCheckout, myOrders } from '../../api/customer'
+import { cancelPendingPaymentOrder, createMockCheckout, myOrders, paymentStatus } from '../../api/customer'
 import { customerChatApi } from '../../api/chat'
 import { centToYuan } from '../../utils/money'
 import type { Order } from '../../types'
@@ -149,7 +149,7 @@ async function contactMerchant(order: Order) {
 async function pay(order: Order) {
   payingOrderId.value = order.id
   try {
-    const checkout = await createAlipayCheckout(order.id)
+    const checkout = await createMockCheckout(order.id)
     paymentQrCodeImage.value = checkout.qrCodeImage
     paymentAmount.value = centToYuan(checkout.amountCent)
     payingDialogOrderId.value = order.id
@@ -194,7 +194,7 @@ function startPaymentPolling() {
     const orderId = payingDialogOrderId.value
     if (!orderId) return
     try {
-      const status = await alipayPaymentStatus(orderId)
+      const status = await paymentStatus(orderId)
       if (!status.paid) return
       stopPaymentPolling()
       paymentDialogVisible.value = false

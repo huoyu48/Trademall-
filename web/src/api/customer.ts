@@ -47,23 +47,41 @@ export function previewOrder(items: { productId: number; quantity: number }[], p
   return http.post<OrderPricing>('/customer/orders/preview', { items, promoCode })
 }
 
-export interface AlipayCheckout {
+export interface MockCheckout {
   paymentNo: string
   amountCent: number
   qrCodeImage: string
 }
 
-export function createAlipayCheckout(id: number) {
-  return http.post<AlipayCheckout>(`/customer/orders/${id}/payments/alipay`)
+export function createMockCheckout(id: number) {
+  return http.post<MockCheckout>(`/customer/orders/${id}/payments/mock`)
 }
 
-export interface AlipayPaymentStatus {
+export interface PaymentStatus {
   orderStatus: string
   paid: boolean
 }
 
-export function alipayPaymentStatus(id: number) {
-  return http.get<AlipayPaymentStatus>(`/customer/orders/${id}/payments/alipay/status`)
+export function paymentStatus(id: number) {
+  return http.get<PaymentStatus>(`/customer/orders/${id}/payments/mock/status`)
+}
+
+export interface MockPaymentPage {
+  paymentNo: string
+  orderNo: string
+  amountCent: number
+  status: string
+  paid: boolean
+  expiresAt?: string
+}
+
+/** 手机扫码后的公开模拟收银台接口，不要求顾客登录。 */
+export function mockPaymentPage(token: string) {
+  return http.get<MockPaymentPage>('/payments/mock/checkout', { params: { token } })
+}
+
+export function confirmMockPayment(token: string) {
+  return http.post<MockPaymentPage>('/payments/mock/checkout/confirm', undefined, { params: { token } })
 }
 
 export function cancelPendingPaymentOrder(id: number) {

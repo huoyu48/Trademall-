@@ -11,8 +11,8 @@ import com.orderflow.order.CreateOrderRequest;
 import com.orderflow.order.OrderDTO;
 import com.orderflow.order.OrderPricingDTO;
 import com.orderflow.order.OrderService;
-import com.orderflow.payment.AlipayCheckoutDTO;
-import com.orderflow.payment.AlipayPaymentStatusDTO;
+import com.orderflow.payment.MockCheckoutDTO;
+import com.orderflow.payment.PaymentStatusDTO;
 import com.orderflow.payment.PaymentService;
 import com.orderflow.product.ProductDTO;
 import com.orderflow.product.ProductService;
@@ -97,20 +97,20 @@ public class CustomerController {
         return ApiResponse.success(orderService.preview(toOrderRequest(req, me), resolveOrderTenant(req)));
     }
 
-    /** 生成支付宝沙箱付款二维码；订单状态只在支付宝回调验签成功后更新。 */
-    @PostMapping("/orders/{id}/payments/alipay")
+    /** 生成项目内模拟收银台二维码；仅在手机端确认后更新订单状态。 */
+    @PostMapping("/orders/{id}/payments/mock")
     @PreAuthorize("hasRole('CUSTOMER')")
-    public ApiResponse<AlipayCheckoutDTO> startAlipayPayment(@PathVariable Long id) {
+    public ApiResponse<MockCheckoutDTO> startMockPayment(@PathVariable Long id) {
         LoginUser me = SecurityUtils.current();
-        return ApiResponse.success(paymentService.createAlipayCheckout(id, me.getUserId()));
+        return ApiResponse.success(paymentService.createMockCheckout(id, me.getUserId()));
     }
 
-    /** 二维码弹窗轮询本地订单状态；不信任前端传来的“支付成功”。 */
-    @GetMapping("/orders/{id}/payments/alipay/status")
+    /** 二维码弹窗只轮询本地订单状态，不能由电脑端直接伪造付款成功。 */
+    @GetMapping("/orders/{id}/payments/mock/status")
     @PreAuthorize("hasRole('CUSTOMER')")
-    public ApiResponse<AlipayPaymentStatusDTO> alipayPaymentStatus(@PathVariable Long id) {
+    public ApiResponse<PaymentStatusDTO> mockPaymentStatus(@PathVariable Long id) {
         LoginUser me = SecurityUtils.current();
-        return ApiResponse.success(paymentService.getAlipayPaymentStatus(id, me.getUserId()));
+        return ApiResponse.success(paymentService.getPaymentStatus(id, me.getUserId()));
     }
 
     /** 顾客主动取消待付款订单：回补库存，并关闭已生成但尚未支付的付款码。 */
@@ -119,7 +119,7 @@ public class CustomerController {
     public ApiResponse<OrderDTO> cancelPendingPaymentOrder(@PathVariable Long id) {
         LoginUser me = SecurityUtils.current();
         OrderDTO order = orderService.cancelPendingPaymentByCustomer(id, me.getUserId());
-        paymentService.closePendingAlipayPayment(id);
+        paymentService.closePendingPayments(id);
         return ApiResponse.success(order);
     }
 

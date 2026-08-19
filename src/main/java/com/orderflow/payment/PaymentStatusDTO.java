@@ -2,9 +2,9 @@ package com.orderflow.payment;
 
 import lombok.Data;
 
-/** 付款二维码弹窗轮询用的最小状态数据。 */
+/** 电脑端轮询订单付款状态所需的最小数据。 */
 @Data
-public class AlipayPaymentStatusDTO {
+public class PaymentStatusDTO {
     private String orderStatus;
     private boolean paid;
 }

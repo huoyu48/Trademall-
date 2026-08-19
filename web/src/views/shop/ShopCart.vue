@@ -57,20 +57,20 @@
         <div class="sum-row sum-total"><span>应付金额</span><b class="sum-price">¥ {{ centToYuan(selectedPayableCent) }}</b></div>
         <el-button type="primary" size="large" class="submit-btn" :loading="submitting"
                    :disabled="cart.checkedCount === 0" @click="checkout">
-          支付宝付款{{ cart.checkedGroups.length > 1 ? `（拆 ${cart.checkedGroups.length} 单，依次支付）` : '' }}
+          模拟扫码付款{{ cart.checkedGroups.length > 1 ? `（拆 ${cart.checkedGroups.length} 单，依次付款）` : '' }}
         </el-button>
-        <p class="sum-tip">点击后将创建订单并立即展示支付宝沙箱付款码</p>
+        <p class="sum-tip">点击后将创建订单并展示模拟付款码，不会产生真实扣款</p>
       </div>
     </div>
 
-    <el-dialog v-model="paymentDialogVisible" title="支付宝沙箱付款" width="390px" align-center
+    <el-dialog v-model="paymentDialogVisible" title="模拟扫码付款" width="390px" align-center
                :close-on-click-modal="false" @closed="stopPaymentPolling">
       <div class="payment-dialog">
         <p v-if="paymentOrderIds.length > 1" class="payment-progress">
           第 {{ currentPaymentIndex + 1 }} / {{ paymentOrderIds.length }} 笔订单
         </p>
-        <p>请使用支付宝沙箱版 App 扫描二维码完成模拟付款</p>
-        <img v-if="paymentQrCodeImage" class="payment-qr-code" :src="paymentQrCodeImage" alt="支付宝付款二维码" />
+        <p>请用手机扫描二维码，在项目模拟收银台确认付款</p>
+        <img v-if="paymentQrCodeImage" class="payment-qr-code" :src="paymentQrCodeImage" alt="模拟付款二维码" />
         <p class="payment-amount">应付 ¥ {{ paymentAmount }}</p>
         <p class="payment-hint">支付成功后会自动继续下一笔订单；关闭后也可在“我的订单”中继续付款。</p>
       </div>
@@ -83,7 +83,7 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '../../components/PageHeader.vue'
 import { useCartStore, type StoreGroup } from '../../stores/cart'
-import { alipayPaymentStatus, createAlipayCheckout, createOrder, previewOrder } from '../../api/customer'
+import { createMockCheckout, createOrder, paymentStatus, previewOrder } from '../../api/customer'
 import { centToYuan } from '../../utils/money'
 import type { OrderPricing } from '../../types'
 
@@ -175,7 +175,7 @@ function currentPaymentOrderId() {
 async function showCurrentPaymentQrCode() {
   const orderId = currentPaymentOrderId()
   if (!orderId) return
-  const checkout = await createAlipayCheckout(orderId)
+  const checkout = await createMockCheckout(orderId)
   paymentQrCodeImage.value = checkout.qrCodeImage
   paymentAmount.value = centToYuan(checkout.amountCent)
   paymentDialogVisible.value = true
@@ -197,7 +197,7 @@ function startPaymentPolling() {
     if (!orderId || paymentChecking) return
     paymentChecking = true
     try {
-      const status = await alipayPaymentStatus(orderId)
+      const status = await paymentStatus(orderId)
       if (!status.paid) return
       stopPaymentPolling()
       currentPaymentIndex.value += 1

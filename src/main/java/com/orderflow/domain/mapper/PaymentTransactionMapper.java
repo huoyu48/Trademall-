@@ -12,24 +12,35 @@ import org.apache.ibatis.annotations.Update;
 public interface PaymentTransactionMapper extends BaseMapper<PaymentTransaction> {
 
     @InterceptorIgnore(tenantLine = "true")
-    @Select("SELECT * FROM payment_transaction WHERE order_id = #{orderId} AND provider = 'ALIPAY' LIMIT 1")
-    PaymentTransaction findAlipayByOrderId(@Param("orderId") Long orderId);
+    @Select("SELECT * FROM payment_transaction WHERE order_id = #{orderId} AND provider = 'MOCK' LIMIT 1")
+    PaymentTransaction findMockByOrderId(@Param("orderId") Long orderId);
 
     @InterceptorIgnore(tenantLine = "true")
-    @Select("SELECT * FROM payment_transaction WHERE out_trade_no = #{outTradeNo} AND provider = 'ALIPAY' LIMIT 1")
-    PaymentTransaction findAlipayByOutTradeNo(@Param("outTradeNo") String outTradeNo);
+    @Select("SELECT * FROM payment_transaction WHERE payment_token = #{paymentToken} AND provider = 'MOCK' LIMIT 1")
+    PaymentTransaction findMockByToken(@Param("paymentToken") String paymentToken);
 
     @InterceptorIgnore(tenantLine = "true")
-    @Update("UPDATE payment_transaction SET status = 'SUCCESS', alipay_trade_no = #{alipayTradeNo}, " +
+    @Update("UPDATE payment_transaction SET status = 'SUCCESS', provider_trade_no = #{providerTradeNo}, " +
             "callback_payload = #{payload}, paid_at = NOW() WHERE id = #{id} AND status = 'PENDING'")
-    int markSuccess(@Param("id") Long id, @Param("alipayTradeNo") String alipayTradeNo,
+    int markSuccess(@Param("id") Long id, @Param("providerTradeNo") String providerTradeNo,
                     @Param("payload") String payload);
 
     @InterceptorIgnore(tenantLine = "true")
-    @Update("UPDATE payment_transaction SET qr_code = #{qrCode} WHERE id = #{id} AND status = 'PENDING'")
-    int updateQrCode(@Param("id") Long id, @Param("qrCode") String qrCode);
+    @Update("UPDATE payment_transaction SET payment_token = #{paymentToken}, expires_at = #{expiresAt}, qr_code = #{qrCode} " +
+            "WHERE id = #{id} AND status = 'PENDING'")
+    int refreshMockCheckout(@Param("id") Long id, @Param("paymentToken") String paymentToken,
+                            @Param("expiresAt") java.time.LocalDateTime expiresAt, @Param("qrCode") String qrCode);
 
     @InterceptorIgnore(tenantLine = "true")
     @Update("UPDATE payment_transaction SET status = 'CLOSED' WHERE id = #{id} AND status = 'PENDING'")
     int markClosed(@Param("id") Long id);
+
+    @InterceptorIgnore(tenantLine = "true")
+    @Update("UPDATE payment_transaction SET status = 'CLOSED' WHERE order_id = #{orderId} AND status = 'PENDING'")
+    int closePendingByOrderId(@Param("orderId") Long orderId);
+
+    /** 切换为模拟付款时，关闭历史渠道遗留的待付款流水，避免同一订单存在两个可用付款入口。 */
+    @InterceptorIgnore(tenantLine = "true")
+    @Update("UPDATE payment_transaction SET status = 'CLOSED' WHERE order_id = #{orderId} AND status = 'PENDING' AND provider <> 'MOCK'")
+    int closeLegacyPendingByOrderId(@Param("orderId") Long orderId);
 }
