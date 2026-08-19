@@ -35,7 +35,8 @@
 
         <div class="pdp-promo">
           <el-icon color="#0f766e"><Discount /></el-icon>
-          <span>{{ p.storeName || '该商家' }}专享：满 200 减 30 · 满 500 减 80 · 新人首单立减 20</span>
+          <span v-if="p.storePromotionTexts?.length">{{ p.storeName || '该商家' }}专享：{{ p.storePromotionTexts.join(' · ') }}</span>
+          <span v-else>该店当前暂无满减活动</span>
         </div>
 
         <div class="pdp-actions">

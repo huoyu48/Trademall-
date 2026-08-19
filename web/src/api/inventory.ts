@@ -4,7 +4,7 @@ export function listInventory() {
   return http.get<any[]>('/inventories')
 }
 
-export function adjustInventory(data: { productId: number; changeQuantity: number; reason: string }) {
+export function adjustInventory(data: { productId: number; changeQuantity: number; reason?: string }) {
   return http.post<any>('/inventories/adjustments', data)
 }
 

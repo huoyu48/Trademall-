@@ -11,6 +11,8 @@ public class OrderDTO {
     private String orderNo;
     private String customerName;
     private Long customerId;
+    private Long storeId;
+    private String storeName;
     private String status;
     private Long totalAmountCent;
     private String promoCode;

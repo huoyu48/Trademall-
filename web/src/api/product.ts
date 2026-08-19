@@ -18,6 +18,8 @@ export function createProduct(data: {
   productCode: string
   productName: string
   unitPriceCent: number
+  categoryId: number
+  storeId: number
   status?: number
   remark?: string
 }) {
@@ -26,7 +28,7 @@ export function createProduct(data: {
 
 export function updateProduct(
   id: number,
-  data: { productCode?: string; productName?: string; unitPriceCent?: number; status?: number; remark?: string }
+  data: { productCode?: string; productName?: string; unitPriceCent?: number; categoryId?: number; storeId?: number; status?: number; remark?: string }
 ) {
   return http.put<any>(`/products/${id}`, data)
 }

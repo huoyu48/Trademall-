@@ -3,7 +3,9 @@ export const ORDER_STATUS: Record<string, { label: string; type: 'primary' | 'su
   CONFIRMED: { label: '已确认', type: 'warning' },
   SHIPPED: { label: '已发货', type: 'info' },
   COMPLETED: { label: '已完成', type: 'success' },
-  CANCELLED: { label: '已取消', type: 'danger' }
+  CANCELLED: { label: '已取消', type: 'danger' },
+  REFUNDING: { label: '退款中', type: 'warning' },
+  REFUNDED: { label: '已退款', type: 'success' }
 }
 
 // 状态机允许的流转动作

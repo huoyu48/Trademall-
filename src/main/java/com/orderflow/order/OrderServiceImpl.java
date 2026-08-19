@@ -14,12 +14,14 @@ import com.orderflow.domain.entity.OrderStatusHistory;
 import com.orderflow.domain.entity.Orders;
 import com.orderflow.domain.entity.Product;
 import com.orderflow.domain.entity.Promotion;
+import com.orderflow.domain.entity.Store;
 import com.orderflow.domain.mapper.PromotionMapper;
 import com.orderflow.domain.mapper.InventoryMapper;
 import com.orderflow.domain.mapper.OrderItemMapper;
 import com.orderflow.domain.mapper.OrderStatusHistoryMapper;
 import com.orderflow.domain.mapper.OrdersMapper;
 import com.orderflow.domain.mapper.ProductMapper;
+import com.orderflow.domain.mapper.StoreMapper;
 import com.orderflow.outbox.OutboxEventService;
 import com.orderflow.security.TenantContext;
 import org.slf4j.Logger;
@@ -29,11 +31,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -41,6 +47,8 @@ import java.util.concurrent.ThreadLocalRandom;
 public class OrderServiceImpl implements OrderService {
 
     private static final Logger log = LoggerFactory.getLogger(OrderServiceImpl.class);
+    private static final long PRODUCT_LOCK_WAIT_MILLIS = 3000;
+    private static final long PRODUCT_LOCK_TTL_MILLIS = 5000;
 
     private final OrdersMapper ordersMapper;
     private final OrderItemMapper orderItemMapper;
@@ -52,6 +60,7 @@ public class OrderServiceImpl implements OrderService {
     private final RedisLockService redisLock;
     private final RabbitTemplate rabbitTemplate;
     private final PromotionMapper promotionMapper;
+    private final StoreMapper storeMapper;
 
     @Value("${orderflow.inventory.low-stock-threshold:10}")
     private int lowStockThreshold;
@@ -60,7 +69,8 @@ public class OrderServiceImpl implements OrderService {
                             OrderStatusHistoryMapper historyMapper, ProductMapper productMapper,
                             InventoryMapper inventoryMapper, AuditLogService auditLogService,
                             OutboxEventService outboxEventService, RedisLockService redisLock,
-                            RabbitTemplate rabbitTemplate, PromotionMapper promotionMapper) {
+                            RabbitTemplate rabbitTemplate, PromotionMapper promotionMapper,
+                            StoreMapper storeMapper) {
         this.ordersMapper = ordersMapper;
         this.orderItemMapper = orderItemMapper;
         this.historyMapper = historyMapper;
@@ -71,6 +81,7 @@ public class OrderServiceImpl implements OrderService {
         this.redisLock = redisLock;
         this.rabbitTemplate = rabbitTemplate;
         this.promotionMapper = promotionMapper;
+        this.storeMapper = storeMapper;
     }
 
     @Override
@@ -87,13 +98,10 @@ public class OrderServiceImpl implements OrderService {
             throw new BizException(BizErrorCode.IDEMPOTENCY_KEY_REQUIRED);
         }
 
-        // 分布式锁：串行化同一租户的下单关键区，避免高并发下库存预占与订单插入出现竞态。
-        // 数据库层仍保留原子 UPDATE 作为最终防线（双重保险防超卖）。
-        String lockKey = "order:create:lock:" + tenantId;
-        String lockValue = redisLock.tryLock(lockKey, 3000, 5000);
-        if (lockValue == null) {
-            throw new BizException(BizErrorCode.LOCK_ACQUIRE_FAILED);
-        }
+        // 只锁本订单涉及的商品，不再用租户级全局锁阻塞同商家其他商品的下单。
+        // 多商品订单按 productId 升序加锁，所有请求遵循同一顺序以避免相互等待。
+        List<ProductLock> productLocks = acquireProductLocks(tenantId, request);
+        boolean releaseAfterTransaction = registerReleaseAfterTransaction(productLocks);
 
         // 跨租户下单（顾客买别家商品）时，doCreate 内的 selectById/selectList 会自动注入
         // tenant_id=当前顾客的 t-a，导致跨租户商品查不到。临时放开租户拦截。
@@ -103,8 +111,112 @@ public class OrderServiceImpl implements OrderService {
             return doCreate(request, idempotencyKey, tenantId);
         } finally {
             if (crossTenant) TenantContext.setIgnoreTenant(false);
-            redisLock.release(lockKey, lockValue);
+            // 事务提交/回滚后再释放，避免锁已放开但库存、订单尚未提交。
+            if (!releaseAfterTransaction) {
+                releaseProductLocks(productLocks);
+            }
         }
+    }
+
+    @Override
+    public OrderPricingDTO preview(CreateOrderRequest request, Long explicitTenantId) {
+        Long tenantId = explicitTenantId != null ? explicitTenantId : TenantContext.getTenantId();
+        boolean crossTenant = explicitTenantId != null && !explicitTenantId.equals(TenantContext.getTenantId());
+        if (crossTenant) TenantContext.setIgnoreTenant(true);
+        try {
+            long subtotal = 0L;
+            Long storeId = null;
+            String storeName = null;
+            boolean firstProduct = true;
+            for (CreateOrderRequest.OrderItemRequest item : request.getItems()) {
+                Product product = productMapper.selectById(item.getProductId());
+                if (product == null || !tenantId.equals(product.getTenantId())) {
+                    throw new BizException(BizErrorCode.PRODUCT_NOT_IN_TENANT);
+                }
+                if (product.getStatus() == 0) throw new BizException(BizErrorCode.PRODUCT_DISABLED);
+                if (firstProduct) {
+                    storeId = product.getStoreId();
+                    firstProduct = false;
+                    if (storeId != null) {
+                        Store store = storeMapper.selectById(storeId);
+                        if (store == null || !tenantId.equals(store.getTenantId())) {
+                            throw new BizException(BizErrorCode.PRODUCT_NOT_IN_TENANT);
+                        }
+                        storeName = store.getStoreName();
+                    }
+                } else if (!Objects.equals(storeId, product.getStoreId())) {
+                    throw new BizException(40003, "一次订单只能购买同一家门店的商品");
+                }
+                subtotal += product.getUnitPriceCent() * item.getQuantity();
+            }
+            Promotion promo = findApplicablePromotion(tenantId, request.getPromoCode(), subtotal, LocalDateTime.now());
+            long discount = calculateDiscount(promo, subtotal);
+            OrderPricingDTO result = new OrderPricingDTO();
+            result.setStoreId(storeId);
+            result.setStoreName(storeName);
+            result.setSubtotalAmountCent(subtotal);
+            result.setPromoCode(promo == null ? null : promo.getPromoCode());
+            result.setDiscountAmountCent(discount);
+            result.setPayableAmountCent(subtotal - discount);
+            return result;
+        } finally {
+            if (crossTenant) TenantContext.setIgnoreTenant(false);
+        }
+    }
+
+    static List<Long> orderedProductIds(CreateOrderRequest request) {
+        return request.getItems().stream()
+                .map(CreateOrderRequest.OrderItemRequest::getProductId)
+                .distinct()
+                .sorted(Comparator.naturalOrder())
+                .toList();
+    }
+
+    static String productLockKey(Long tenantId, Long productId) {
+        return "order:create:lock:" + tenantId + ":product:" + productId;
+    }
+
+    private List<ProductLock> acquireProductLocks(Long tenantId, CreateOrderRequest request) {
+        long deadline = System.currentTimeMillis() + PRODUCT_LOCK_WAIT_MILLIS;
+        List<ProductLock> acquired = new ArrayList<>();
+        for (Long productId : orderedProductIds(request)) {
+            long remaining = deadline - System.currentTimeMillis();
+            if (remaining < 0) {
+                releaseProductLocks(acquired);
+                throw new BizException(BizErrorCode.LOCK_ACQUIRE_FAILED);
+            }
+            String key = productLockKey(tenantId, productId);
+            String value = redisLock.tryLock(key, remaining, PRODUCT_LOCK_TTL_MILLIS);
+            if (value == null) {
+                releaseProductLocks(acquired);
+                throw new BizException(BizErrorCode.LOCK_ACQUIRE_FAILED);
+            }
+            acquired.add(new ProductLock(key, value));
+        }
+        return acquired;
+    }
+
+    private boolean registerReleaseAfterTransaction(List<ProductLock> productLocks) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return false;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                releaseProductLocks(productLocks);
+            }
+        });
+        return true;
+    }
+
+    private void releaseProductLocks(List<ProductLock> productLocks) {
+        for (int i = productLocks.size() - 1; i >= 0; i--) {
+            ProductLock lock = productLocks.get(i);
+            redisLock.release(lock.key(), lock.value());
+        }
+    }
+
+    private record ProductLock(String key, String value) {
     }
 
     private OrderDTO doCreate(CreateOrderRequest request, String idempotencyKey, Long tenantId) {
@@ -117,6 +229,9 @@ public class OrderServiceImpl implements OrderService {
         // 校验商品并取快照
         List<OrderItem> items = new ArrayList<>();
         long total = 0;
+        Long storeId = null;
+        String storeNameSnapshot = null;
+        boolean firstProduct = true;
         for (CreateOrderRequest.OrderItemRequest it : request.getItems()) {
             Product p = productMapper.selectById(it.getProductId());
             if (p == null || !tenantId.equals(p.getTenantId())) {
@@ -124,6 +239,20 @@ public class OrderServiceImpl implements OrderService {
             }
             if (p.getStatus() == 0) {
                 throw new BizException(BizErrorCode.PRODUCT_DISABLED);
+            }
+            // 顾客端已按门店拆单；后端再次校验，不能依赖前端分组结果。
+            if (firstProduct) {
+                storeId = p.getStoreId();
+                firstProduct = false;
+                if (storeId != null) {
+                    Store store = storeMapper.selectById(storeId);
+                    if (store == null || !tenantId.equals(store.getTenantId())) {
+                        throw new BizException(BizErrorCode.PRODUCT_NOT_IN_TENANT);
+                    }
+                    storeNameSnapshot = store.getStoreName();
+                }
+            } else if (!Objects.equals(storeId, p.getStoreId())) {
+                throw new BizException(40003, "一次订单只能购买同一家门店的商品");
             }
             OrderItem oi = new OrderItem();
             oi.setProductId(p.getId());
@@ -136,28 +265,24 @@ public class OrderServiceImpl implements OrderService {
             total += oi.getLineAmountCent();
         }
 
-        // 营销活动：携带可用 promoCode 且达到门槛时减免订单金额
+        // 未手动选券时，自动使用该商家当前可用且优惠力度最大的满减；
+        // 显式传入活动码时则校验并使用该活动。最终金额只由后端计算。
         String appliedPromo = null;
         long discount = 0L;
-        if (request.getPromoCode() != null && !request.getPromoCode().isBlank()) {
-            Promotion promo = promotionMapper.selectOne(new QueryWrapper<Promotion>()
-                    .eq("tenant_id", tenantId).eq("promo_code", request.getPromoCode()));
-            if (promo != null && promo.getStatus() != null && promo.getStatus() == 1
-                    && (promo.getBeginAt() == null || !LocalDateTime.now().isBefore(promo.getBeginAt()))
-                    && (promo.getEndAt() == null || !LocalDateTime.now().isAfter(promo.getEndAt()))
-                    && total >= (promo.getThresholdCent() == null ? 0 : promo.getThresholdCent())) {
-                discount = promo.getDiscountAmountCent() == null ? 0 : promo.getDiscountAmountCent();
-                if (discount > total) discount = total;
-                appliedPromo = promo.getPromoCode();
-            }
+        Promotion promo = findApplicablePromotion(tenantId, request.getPromoCode(), total, LocalDateTime.now());
+        if (promo != null) {
+            discount = calculateDiscount(promo, total);
+            appliedPromo = promo.getPromoCode();
         }
-        if (discount > 0) total -= discount;
+        total -= discount;
 
         Orders order = new Orders();
         order.setTenantId(tenantId);
         order.setOrderNo(generateOrderNo());
         order.setCustomerName(request.getCustomerName());
         order.setCustomerId(request.getCustomerId());
+        order.setStoreId(storeId);
+        order.setStoreNameSnapshot(storeNameSnapshot);
         order.setStatus(OrderStatus.CREATED.name());
         order.setPromoCode(appliedPromo);
         order.setDiscountAmountCent(discount > 0 ? discount : null);
@@ -205,6 +330,52 @@ public class OrderServiceImpl implements OrderService {
         return toDTO(order);
     }
 
+    private Promotion findApplicablePromotion(Long tenantId, String promoCode, long total, LocalDateTime now) {
+        QueryWrapper<Promotion> query = new QueryWrapper<Promotion>()
+                .eq("tenant_id", tenantId)
+                .eq("status", 1);
+        if (promoCode != null && !promoCode.isBlank()) {
+            query.eq("promo_code", promoCode);
+        } else {
+            // 没有选券时只自动用满减；优惠券还需要后续的领券/选券能力，不能擅自给用户使用。
+            query.eq("promo_type", "FULL_REDUCTION");
+        }
+        return chooseBestPromotion(promotionMapper.selectList(query), total, now);
+    }
+
+    static Promotion chooseBestPromotion(List<Promotion> promotions, long total, LocalDateTime now) {
+        if (promotions == null) return null;
+        return promotions.stream()
+                .filter(p -> isApplicable(p, total, now))
+                .max(Comparator.comparingLong(p -> calculateDiscount(p, total)))
+                .orElse(null);
+    }
+
+    /**
+     * 满减按门槛倍数循环计算，例如每满 500 减 80，3499 元应减 6 * 80 = 480 元。
+     * 优惠券、首单立减等其他活动仍然只使用一次。历史数据中负数减免额也兼容为正数。
+     */
+    static long calculateDiscount(Promotion promotion, long total) {
+        if (promotion == null || total <= 0 || promotion.getDiscountAmountCent() == null) return 0L;
+        long perDiscount = Math.abs(promotion.getDiscountAmountCent());
+        long threshold = promotion.getThresholdCent() == null ? 0L : promotion.getThresholdCent();
+        long discount = perDiscount;
+        if ("FULL_REDUCTION".equals(promotion.getPromoType()) && threshold > 0) {
+            discount = (total / threshold) * perDiscount;
+        }
+        return Math.min(total, discount);
+    }
+
+    private static boolean isApplicable(Promotion promotion, long total, LocalDateTime now) {
+        if (promotion == null || promotion.getDiscountAmountCent() == null
+                || promotion.getDiscountAmountCent() == 0
+                || promotion.getStatus() == null || promotion.getStatus() != 1) return false;
+        long threshold = promotion.getThresholdCent() == null ? 0 : promotion.getThresholdCent();
+        return total >= threshold
+                && (promotion.getBeginAt() == null || !now.isBefore(promotion.getBeginAt()))
+                && (promotion.getEndAt() == null || !now.isAfter(promotion.getEndAt()));
+    }
+
     private void publishLowStock(Long tenantId, Long productId, long available) {
         InventoryLowStockMessage msg = InventoryLowStockMessage.builder()
                 .eventId(UUID.randomUUID().toString().replace("-", ""))
@@ -229,9 +400,20 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public PageResult<OrderDTO> page(int page, int size) {
+        return page(page, size, null, null);
+    }
+
+    @Override
+    public PageResult<OrderDTO> page(int page, int size, String status, String orderNo) {
         Long tenantId = TenantContext.getTenantId();
-        Page<Orders> p = ordersMapper.selectPage(new Page<>(page, size),
-                new QueryWrapper<Orders>().eq("tenant_id", tenantId).orderByDesc("id"));
+        QueryWrapper<Orders> query = new QueryWrapper<Orders>().eq("tenant_id", tenantId);
+        if (status != null && !status.isBlank()) {
+            query.eq("status", status);
+        }
+        if (orderNo != null && !orderNo.isBlank()) {
+            query.like("order_no", orderNo.trim());
+        }
+        Page<Orders> p = ordersMapper.selectPage(new Page<>(page, size), query.orderByDesc("id"));
         return PageResult.of(p.getRecords().stream().map(this::toDTO).toList(),
                 p.getTotal(), page, size);
     }
@@ -390,6 +572,8 @@ public class OrderServiceImpl implements OrderService {
         dto.setOrderNo(order.getOrderNo());
         dto.setCustomerName(order.getCustomerName());
         dto.setCustomerId(order.getCustomerId());
+        dto.setStoreId(order.getStoreId());
+        dto.setStoreName(order.getStoreNameSnapshot());
         dto.setStatus(order.getStatus());
         dto.setTotalAmountCent(order.getTotalAmountCent());
         dto.setPromoCode(order.getPromoCode());

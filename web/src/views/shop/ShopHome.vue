@@ -47,6 +47,9 @@
         <div class="card-body">
           <div class="card-name">{{ p.productName }}</div>
           <div class="card-store"><el-icon style="margin-right: 3px"><Shop /></el-icon>{{ p.storeName || '官方直营' }}</div>
+          <div v-if="p.storePromotionTexts?.length" class="card-promotions">
+            <span v-for="text in p.storePromotionTexts.slice(0, 2)" :key="text" class="card-promotion">{{ text }}</span>
+          </div>
           <div class="card-meta">
             <el-tag size="small" effect="plain" type="info">{{ p.categoryName || '通用' }}</el-tag>
             <span class="card-sales">已售 {{ formatSales(p.sales) }}</span>
@@ -222,6 +225,11 @@ onMounted(async () => {
 .card-store {
   display: inline-flex; align-items: center; font-size: 12px; color: #d97706;
   background: #fffbeb; padding: 2px 8px; border-radius: 4px; margin: 6px 0 8px;
+}
+.card-promotions { display: flex; flex-wrap: wrap; gap: 5px; margin: -2px 0 8px; }
+.card-promotion {
+  color: #dc2626; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px;
+  padding: 2px 6px; font-size: 11px; font-weight: 600;
 }
 .card-meta { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .card-sales { font-size: 12px; color: var(--of-text-3); }

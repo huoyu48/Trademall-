@@ -32,8 +32,10 @@ public class OrderController {
 
     @GetMapping
     public ApiResponse<PageResult<OrderDTO>> page(@RequestParam(defaultValue = "1") int page,
-                                                 @RequestParam(defaultValue = "10") int size) {
-        return ApiResponse.success(orderService.page(page, size));
+                                                 @RequestParam(defaultValue = "10") int size,
+                                                 @RequestParam(required = false) String status,
+                                                 @RequestParam(required = false) String orderNo) {
+        return ApiResponse.success(orderService.page(page, size, status, orderNo));
     }
 
     @PostMapping("/{id}/confirm")

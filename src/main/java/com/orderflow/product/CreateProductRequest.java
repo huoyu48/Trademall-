@@ -14,5 +14,9 @@ public class CreateProductRequest {
     @NotNull(message = "单价不能为空")
     @PositiveOrZero(message = "单价必须为非负整数（分）")
     private Long unitPriceCent;
+    @NotNull(message = "请选择商品分类")
+    private Long categoryId;
+    @NotNull(message = "请选择所属店铺")
+    private Long storeId;
     private Integer status = 1;
 }

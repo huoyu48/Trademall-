@@ -23,8 +23,13 @@
             <el-checkbox :model-value="groupChecked(g)" @change="(v: boolean) => cart.toggleStore(g.storeId, v)" />
             <el-icon color="#d97706" :size="16"><Shop /></el-icon>
             <span class="group-name">{{ g.storeName }}</span>
-            <el-tag size="small" type="warning" effect="plain">本店优惠</el-tag>
-            <span class="group-sub">小计 ¥ {{ centToYuan(g.totalCent) }}</span>
+            <el-tag size="small" type="warning" effect="plain">
+              {{ pricingOf(g)?.discountAmountCent ? `${pricingOf(g)?.promoCode || '本店满减'} -¥${centToYuan(pricingOf(g)?.discountAmountCent)}` : '暂无可用满减' }}
+            </el-tag>
+            <span class="group-sub">
+              小计 ¥ {{ centToYuan(g.totalCent) }}
+              <template v-if="pricingOf(g)?.discountAmountCent">，优惠 -¥ {{ centToYuan(pricingOf(g)?.discountAmountCent) }}，应付 ¥ {{ centToYuan(pricingOf(g)?.payableAmountCent) }}</template>
+            </span>
             <el-button link type="danger" size="small" @click="cart.removeStore(g.storeId)">删除整组</el-button>
           </div>
 
@@ -48,29 +53,32 @@
         <div class="sum-row"><span>已选件数</span><b>{{ cart.checkedCount }}</b></div>
         <div class="sum-row"><span>涉及商家</span><b>{{ cart.checkedGroups.length }} 家</b></div>
         <div class="sum-row"><span>商品合计</span><b>¥ {{ centToYuan(cart.checkedTotalCent) }}</b></div>
-        <div class="sum-row sum-total"><span>应付金额</span><b class="sum-price">¥ {{ centToYuan(cart.checkedTotalCent) }}</b></div>
+        <div class="sum-row" v-if="selectedDiscountCent > 0"><span>店铺优惠</span><b class="sum-discount">- ¥ {{ centToYuan(selectedDiscountCent) }}</b></div>
+        <div class="sum-row sum-total"><span>应付金额</span><b class="sum-price">¥ {{ centToYuan(selectedPayableCent) }}</b></div>
         <el-button type="primary" size="large" class="submit-btn" :loading="submitting"
                    :disabled="cart.checkedCount === 0" @click="checkout">
           提交订单{{ cart.checkedGroups.length > 1 ? `（拆 ${cart.checkedGroups.length} 单）` : '' }}
         </el-button>
-        <p class="sum-tip">跨商家自动拆单，每笔订单独立按商家优惠结算</p>
+        <p class="sum-tip">跨商家自动拆单；优惠和应付金额由服务端实时结算</p>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '../../components/PageHeader.vue'
 import { useCartStore, type StoreGroup } from '../../stores/cart'
-import { createOrder } from '../../api/customer'
+import { createOrder, previewOrder } from '../../api/customer'
 import { centToYuan } from '../../utils/money'
+import type { OrderPricing } from '../../types'
 
 const cart = useCartStore()
 const router = useRouter()
 const submitting = ref(false)
+const pricingByStore = ref<Record<number, OrderPricing>>({})
 // 同一次结算失败后再次点击会沿用同一 Key；成功后才清除，避免网络重试重复创建订单。
 const checkoutKeys = ref<Record<number, string>>({})
 
@@ -89,6 +97,31 @@ const allGroups = computed<StoreGroup[]>(() => {
   }
   return Array.from(map.values())
 })
+
+const selectedDiscountCent = computed(() => cart.checkedGroups.reduce(
+  (sum, group) => sum + (pricingByStore.value[group.storeId]?.discountAmountCent || 0), 0
+))
+const selectedPayableCent = computed(() => Math.max(0, cart.checkedTotalCent - selectedDiscountCent.value))
+
+function pricingOf(group: StoreGroup) {
+  return pricingByStore.value[group.storeId]
+}
+
+async function refreshPricing() {
+  const groups = cart.checkedGroups
+  const next: Record<number, OrderPricing> = {}
+  await Promise.all(groups.map(async (group) => {
+    const items = group.items.map((item) => ({ productId: item.productId, quantity: item.quantity }))
+    next[group.storeId] = await previewOrder(items)
+  }))
+  pricingByStore.value = next
+}
+
+watch(
+  () => cart.items.map((item) => `${item.productId}:${item.quantity}:${item.checked}`).join('|'),
+  () => { void refreshPricing() },
+  { immediate: true }
+)
 
 function groupChecked(g: StoreGroup) {
   return g.items.length > 0 && g.items.every((i) => i.checked)
@@ -169,6 +202,7 @@ async function batchRemove() {
 }
 .sum-row { display: flex; justify-content: space-between; margin-bottom: 14px; font-size: 14px; color: var(--of-text-2); }
 .sum-row b { color: var(--of-text); }
+.sum-discount { color: #16a34a !important; }
 .sum-total { border-top: 1px dashed var(--of-border); padding-top: 14px; font-size: 15px; }
 .sum-price { color: #ef4444; font-size: 24px; }
 .submit-btn { width: 100%; margin-top: 6px; font-weight: 600; }

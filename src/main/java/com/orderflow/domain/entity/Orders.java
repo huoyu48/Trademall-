@@ -18,6 +18,8 @@ public class Orders {
     private String orderNo;
     private String customerName;
     private Long customerId;
+    private Long storeId;
+    private String storeNameSnapshot;
     private String status;
     private Long totalAmountCent;
     private String promoCode;

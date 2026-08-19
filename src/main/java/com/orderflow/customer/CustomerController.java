@@ -9,6 +9,7 @@ import com.orderflow.domain.entity.Category;
 import com.orderflow.domain.entity.Product;
 import com.orderflow.order.CreateOrderRequest;
 import com.orderflow.order.OrderDTO;
+import com.orderflow.order.OrderPricingDTO;
 import com.orderflow.order.OrderService;
 import com.orderflow.product.ProductDTO;
 import com.orderflow.product.ProductService;
@@ -78,24 +79,17 @@ public class CustomerController {
     public ApiResponse<OrderDTO> createOrder(@Valid @RequestBody CustomerOrderRequest req,
                                              @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
         LoginUser me = SecurityUtils.current();
-        List<Long> productIds = req.getItems().stream().map(CreateOrderRequest.OrderItemRequest::getProductId).toList();
-        List<Product> products = productService.listByIds(productIds);
-        if (products.isEmpty()) {
-            throw new BizException(BizErrorCode.PRODUCT_NOT_FOUND);
-        }
-        Long orderTenantId = products.get(0).getTenantId();
-        for (Product p : products) {
-            if (!orderTenantId.equals(p.getTenantId())) {
-                throw new BizException(BizErrorCode.PRODUCT_NOT_IN_TENANT);
-            }
-        }
-
-        CreateOrderRequest cor = new CreateOrderRequest();
-        cor.setCustomerName(me.getUsername());
-        cor.setPromoCode(req.getPromoCode());
-        cor.setItems(req.getItems());
-        cor.setCustomerId(me.getUserId());
+        Long orderTenantId = resolveOrderTenant(req);
+        CreateOrderRequest cor = toOrderRequest(req, me);
         return ApiResponse.success(orderService.create(cor, idempotencyKey, orderTenantId));
+    }
+
+    /** 购物车实时展示“商品合计、店铺满减、应付金额”；不创建订单，也不扣库存。 */
+    @PostMapping("/orders/preview")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ApiResponse<OrderPricingDTO> previewOrder(@Valid @RequestBody CustomerOrderRequest req) {
+        LoginUser me = SecurityUtils.current();
+        return ApiResponse.success(orderService.preview(toOrderRequest(req, me), resolveOrderTenant(req)));
     }
 
     /** 我的订单：按顾客身份查全部订单（跨租户） */
@@ -104,5 +98,27 @@ public class CustomerController {
     public ApiResponse<List<OrderDTO>> myOrders() {
         LoginUser me = SecurityUtils.current();
         return ApiResponse.success(orderService.listByCustomer(me.getUserId()));
+    }
+
+    private Long resolveOrderTenant(CustomerOrderRequest req) {
+        List<Long> productIds = req.getItems().stream().map(CreateOrderRequest.OrderItemRequest::getProductId).toList();
+        List<Product> products = productService.listByIds(productIds);
+        if (products.isEmpty()) throw new BizException(BizErrorCode.PRODUCT_NOT_FOUND);
+        Long orderTenantId = products.get(0).getTenantId();
+        for (Product product : products) {
+            if (!orderTenantId.equals(product.getTenantId())) {
+                throw new BizException(BizErrorCode.PRODUCT_NOT_IN_TENANT);
+            }
+        }
+        return orderTenantId;
+    }
+
+    private CreateOrderRequest toOrderRequest(CustomerOrderRequest request, LoginUser customer) {
+        CreateOrderRequest result = new CreateOrderRequest();
+        result.setCustomerName(customer.getUsername());
+        result.setPromoCode(request.getPromoCode());
+        result.setItems(request.getItems());
+        result.setCustomerId(customer.getUserId());
+        return result;
     }
 }

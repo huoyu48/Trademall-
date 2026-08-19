@@ -8,16 +8,20 @@ import com.orderflow.common.PageResult;
 import com.orderflow.domain.entity.Category;
 import com.orderflow.domain.entity.Inventory;
 import com.orderflow.domain.entity.Product;
+import com.orderflow.domain.entity.Promotion;
 import com.orderflow.domain.entity.Store;
 import com.orderflow.domain.mapper.CategoryMapper;
 import com.orderflow.domain.mapper.InventoryMapper;
 import com.orderflow.domain.mapper.ProductMapper;
+import com.orderflow.domain.mapper.PromotionMapper;
 import com.orderflow.domain.mapper.StoreMapper;
 import com.orderflow.security.TenantContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -27,15 +31,17 @@ public class ProductServiceImpl implements ProductService {
     private final InventoryMapper inventoryMapper;
     private final CategoryMapper categoryMapper;
     private final StoreMapper storeMapper;
+    private final PromotionMapper promotionMapper;
     private final ProductCacheService cacheService;
 
     public ProductServiceImpl(ProductMapper productMapper, InventoryMapper inventoryMapper,
                               CategoryMapper categoryMapper, StoreMapper storeMapper,
-                              ProductCacheService cacheService) {
+                              PromotionMapper promotionMapper, ProductCacheService cacheService) {
         this.productMapper = productMapper;
         this.inventoryMapper = inventoryMapper;
         this.categoryMapper = categoryMapper;
         this.storeMapper = storeMapper;
+        this.promotionMapper = promotionMapper;
         this.cacheService = cacheService;
     }
 
@@ -52,6 +58,9 @@ public class ProductServiceImpl implements ProductService {
         product.setProductCode(request.getProductCode());
         product.setProductName(request.getProductName());
         product.setUnitPriceCent(request.getUnitPriceCent());
+        validateCategoryAndStore(tenantId, request.getCategoryId(), request.getStoreId());
+        product.setCategoryId(request.getCategoryId());
+        product.setStoreId(request.getStoreId());
         product.setStatus(request.getStatus());
         productMapper.insert(product);
 
@@ -77,6 +86,13 @@ public class ProductServiceImpl implements ProductService {
         product.setProductName(request.getProductName());
         product.setUnitPriceCent(request.getUnitPriceCent());
         product.setStatus(request.getStatus());
+        Long categoryId = request.getCategoryId() == null ? product.getCategoryId() : request.getCategoryId();
+        Long storeId = request.getStoreId() == null ? product.getStoreId() : request.getStoreId();
+        if (categoryId != null && storeId != null) {
+            validateCategoryAndStore(tenantId, categoryId, storeId);
+        }
+        product.setCategoryId(categoryId);
+        product.setStoreId(storeId);
         productMapper.updateById(product);
 
         cacheService.evict(tenantId, productId);
@@ -187,8 +203,44 @@ public class ProductServiceImpl implements ProductService {
             Store s = storeMapper.selectById(p.getStoreId());
             dto.setStoreName(s != null ? s.getStoreName() : null);
         }
+        dto.setStorePromotionTexts(activeFullReductionTexts(p.getTenantId()));
         dto.setCreatedAt(p.getCreatedAt());
         dto.setUpdatedAt(p.getUpdatedAt());
         return dto;
+    }
+
+    /** 商城只展示当前可用、且下单会自动参与计算的满减活动，避免把未领取优惠券误展示成直减。 */
+    private List<String> activeFullReductionTexts(Long tenantId) {
+        if (tenantId == null) return List.of();
+        LocalDateTime now = LocalDateTime.now();
+        return promotionMapper.selectList(new QueryWrapper<Promotion>()
+                        .eq("tenant_id", tenantId)
+                        .eq("promo_type", "FULL_REDUCTION")
+                        .eq("status", 1)
+                        .and(q -> q.isNull("begin_at").or().le("begin_at", now))
+                        .and(q -> q.isNull("end_at").or().ge("end_at", now))
+                        .orderByAsc("threshold_cent"))
+                .stream()
+                .filter(promotion -> promotion.getThresholdCent() != null && promotion.getThresholdCent() > 0
+                        && promotion.getDiscountAmountCent() != null && promotion.getDiscountAmountCent() != 0)
+                .map(promotion -> "每满 ¥" + yuan(promotion.getThresholdCent())
+                        + " 减 ¥" + yuan(Math.abs(promotion.getDiscountAmountCent())))
+                .toList();
+    }
+
+    private String yuan(long cents) {
+        return BigDecimal.valueOf(cents, 2).stripTrailingZeros().toPlainString();
+    }
+
+    /** 分类和门店必须属于当前商家且为启用状态，防止把商品挂到别家店铺。 */
+    private void validateCategoryAndStore(Long tenantId, Long categoryId, Long storeId) {
+        Category category = categoryMapper.selectById(categoryId);
+        if (category == null || !tenantId.equals(category.getTenantId()) || category.getStatus() != 1) {
+            throw new BizException(40003, "商品分类不存在、未启用或不属于当前商家");
+        }
+        Store store = storeMapper.selectById(storeId);
+        if (store == null || !tenantId.equals(store.getTenantId()) || store.getStatus() != 1) {
+            throw new BizException(40003, "所属店铺不存在、未启用或不属于当前商家");
+        }
     }
 }

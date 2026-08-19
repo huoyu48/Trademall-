@@ -36,6 +36,8 @@
         tint="#fffbeb"
         footer="需尽快跟进"
         :delay="160"
+        clickable
+        @click="goPendingOrders"
       />
       <StatCard
         title="低库存商品"
@@ -45,6 +47,8 @@
         tint="#fef2f2"
         footer="需补货"
         :delay="240"
+        clickable
+        @click="goLowStock"
       />
     </div>
 
@@ -82,6 +86,7 @@
           <template #header>
             <span class="panel-title">低库存预警</span>
             <el-tag type="danger" size="small" effect="light" class="panel-tag">可售量告急</el-tag>
+            <el-button link type="primary" class="panel-link" @click="goLowStock">查看全部</el-button>
           </template>
           <div v-if="lowStock.length" class="low-list">
             <div v-for="p in lowStock" :key="p.productName" class="low-item">
@@ -105,6 +110,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { Refresh } from '@element-plus/icons-vue'
 import { getOrderStats } from '../api/order'
@@ -115,6 +121,7 @@ import PageHeader from '../components/PageHeader.vue'
 import StatCard from '../components/StatCard.vue'
 
 const loading = ref(false)
+const router = useRouter()
 const lowStock = ref<any[]>([])
 const stats = reactive({
   todayCount: 0,
@@ -131,7 +138,6 @@ const trends = reactive<{
 
 const STATUS_COLOR: Record<string, string> = {
   CREATED: '#3b82f6',
-  PAID: '#6366f1',
   SHIPPED: '#0ea5e9',
   COMPLETED: '#10b981',
   CANCELLED: '#ef4444'
@@ -153,6 +159,15 @@ function level(q: number): string {
   if (q <= 0) return 'is-danger'
   if (q <= 10) return 'is-warn'
   return 'is-ok'
+}
+
+function goPendingOrders() {
+  // 仪表盘的“待处理”与统计口径一致：仅指刚创建、尚未由商家确认的订单。
+  router.push({ path: '/orders', query: { status: 'CREATED' } })
+}
+
+function goLowStock() {
+  router.push({ path: '/inventories', query: { lowStock: '1' } })
 }
 
 function computeTrend(today: number, yest: number) {
@@ -305,6 +320,7 @@ function renderBar(days: { date: string; count: number; amountCent: number }[]) 
 .panel { border-radius: 14px; }
 .panel-title { font-weight: 600; font-size: 15px; }
 .panel-tag { margin-left: 8px; }
+.panel-link { float: right; padding: 0; }
 .chart { width: 100%; height: 300px; }
 .chart--mid { height: 280px; }
 

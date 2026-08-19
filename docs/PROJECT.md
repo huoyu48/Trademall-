@@ -161,7 +161,7 @@ sequenceDiagram
     C->>Ctrl: POST /customer/orders (items)
     Ctrl->>Svc: create(req, key, tenantId)
     Note over Ctrl,Svc: 先按商品反推 tenantId，跨租户合并下单被拦截
-    Svc->>Lock: tryLock(order:create:lock:{tenantId})
+    Svc->>Lock: 按 productId 升序 tryLock(order:create:lock:{tenantId}:product:{productId})
     alt 锁获取失败
         Lock-->>Svc: null
         Svc-->>C: 系统繁忙，稍后重试
@@ -177,7 +177,7 @@ sequenceDiagram
     MQ->>MQ: 死信队列兜底重试
 ```
 
-**关键点**：分布式锁 + 数据库原子 UPDATE 双重防超卖；`Idempotency-Key` 幂等防重复下单；订单状态写入 `order_status_history` 留痕。
+**关键点**：分布式锁只作用于同一商品，多商品订单按固定顺序加锁避免死锁；数据库原子 UPDATE 是防超卖最终防线；`Idempotency-Key` 幂等防重复下单；订单状态写入 `order_status_history` 留痕。
 
 ### 4.2 订单状态机
 
@@ -353,5 +353,5 @@ make stop
 
 1. **多租户用「机制级」而非「约定级」**：MyBatis-Plus 插件自动注入 `tenant_id`，避免漏写 `where` 导致越权。
 2. **跨租户是显式的**：商城浏览、平台统计用 `ignoreTenant` 临时放行，商家端默认强隔离——「默认安全，显式放行」。
-3. **下单双重防超卖**：Redis 分布式锁串行化关键区 + 数据库原子 `UPDATE` 兜底。
+3. **下单双重防超卖**：Redis 仅按商品粒度串行化冲突请求，多商品订单按固定顺序加锁；数据库原子 `UPDATE` 兜底。
 4. **订单归属商品所在租户**：顾客跨商家下单时，订单 tenantId 取自商品而非登录身份，保证商家只见自己的单。

@@ -13,9 +13,14 @@ public interface OrderService {
      */
     OrderDTO create(CreateOrderRequest request, String idempotencyKey, Long explicitTenantId);
 
+    /** 顾客购物车预览：按商品所属商家计算店铺满减，但不创建订单、不扣库存。 */
+    OrderPricingDTO preview(CreateOrderRequest request, Long explicitTenantId);
+
     OrderDTO get(Long orderId);
 
     PageResult<OrderDTO> page(int page, int size);
+
+    PageResult<OrderDTO> page(int page, int size, String status, String orderNo);
 
     OrderDTO confirm(Long orderId);
 

@@ -9,7 +9,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 基于 Redis 的分布式锁：用于在高并发下单场景下串行化同一租户的库存预占关键区。
+ * 基于 Redis 的分布式锁：用于在高并发下单场景下串行化同一商品的库存预占关键区。
  * <p>
  * 设计要点：
  * 1. 获取用 {@code SET key value NX PX ttl} —— 仅当 key 不存在时才能设置成功，天然互斥；

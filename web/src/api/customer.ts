@@ -1,5 +1,5 @@
 import http from './customerHttp'
-import type { Product, Order, PageResult, Category } from '../types'
+import type { Product, Order, OrderPricing, PageResult, Category } from '../types'
 
 export interface CustomerTokenResponse {
   token: string
@@ -41,6 +41,10 @@ export function createOrder(items: { productId: number; quantity: number }[], pr
   return http.post<Order>('/customer/orders', { items, promoCode }, {
     headers: { 'Idempotency-Key': idempotencyKey || crypto.randomUUID() }
   })
+}
+
+export function previewOrder(items: { productId: number; quantity: number }[], promoCode?: string) {
+  return http.post<OrderPricing>('/customer/orders/preview', { items, promoCode })
 }
 
 export function myOrders() {

@@ -19,6 +19,8 @@
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="productCode" label="商品编码" />
       <el-table-column prop="productName" label="商品名称" />
+      <el-table-column prop="categoryName" label="商品分类" />
+      <el-table-column prop="storeName" label="所属店铺" />
       <el-table-column label="单价(元)" width="110">
         <template #default="{ row }">{{ centToYuan(row.unitPriceCent) }}</template>
       </el-table-column>

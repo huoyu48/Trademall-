@@ -8,6 +8,7 @@ export interface Product {
   categoryName?: string
   storeId?: number
   storeName?: string
+  storePromotionTexts?: string[]
   sales?: number
   createdAt?: string
   updatedAt?: string
@@ -43,10 +44,23 @@ export interface Order {
   id: number
   orderNo: string
   customerName: string
+  storeId?: number
+  storeName?: string
   status: string
   totalAmountCent: number
+  promoCode?: string
+  discountAmountCent?: number
   createdAt?: string
   items: OrderItem[]
+}
+
+export interface OrderPricing {
+  storeId?: number
+  storeName?: string
+  subtotalAmountCent: number
+  promoCode?: string
+  discountAmountCent: number
+  payableAmountCent: number
 }
 
 export interface PageResult<T> {

@@ -39,13 +39,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { pageOrders } from '../api/order'
 import { centToYuan } from '../utils/money'
 import { ORDER_STATUS as statusMap } from '../constants/order'
 
 const router = useRouter()
+const route = useRoute()
 const loading = ref(false)
 const rows = ref<any[]>([])
 const total = ref(0)
@@ -60,8 +61,19 @@ async function load(p = q.page) {
     total.value = r.total || 0
   } finally { loading.value = false }
 }
-function reset() { q.orderNo = ''; q.status = ''; load(1) }
-onMounted(() => load(1))
+function reset() {
+  q.orderNo = ''; q.status = ''
+  router.replace({ query: {} })
+  load(1)
+}
+watch(
+  () => route.query.status,
+  (status) => {
+    q.status = typeof status === 'string' ? status : ''
+    load(1)
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>

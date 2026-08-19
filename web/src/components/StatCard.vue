@@ -1,5 +1,7 @@
 <template>
-  <div class="stat-card of-fade-up" :style="{ animationDelay: delay + 'ms' }">
+  <div class="stat-card of-fade-up" :class="{ 'is-clickable': clickable }" :style="{ animationDelay: delay + 'ms' }"
+       :role="clickable ? 'button' : undefined" :tabindex="clickable ? 0 : undefined"
+       @click="clickable && emit('click')" @keydown.enter="clickable && emit('click')">
     <div class="stat-icon" :style="{ background: tint, color: color }">
       <el-icon :size="22"><component :is="icon" /></el-icon>
     </div>
@@ -28,7 +30,10 @@ defineProps<{
   delay?: number
   trend?: { dir: 'up' | 'down' | 'flat'; text: string }
   footer?: string
+  clickable?: boolean
 }>()
+
+const emit = defineEmits<{ click: [] }>()
 </script>
 
 <style scoped>
@@ -46,6 +51,8 @@ defineProps<{
   transform: translateY(-4px);
   box-shadow: var(--of-shadow-lg);
 }
+.stat-card.is-clickable { cursor: pointer; }
+.stat-card.is-clickable:focus-visible { outline: 3px solid rgba(79, 70, 229, 0.35); outline-offset: 3px; }
 .stat-icon {
   flex: none;
   width: 52px;

@@ -22,6 +22,7 @@
           <div class="oh-left">
             <span class="order-no">订单号 {{ o.orderNo }}</span>
             <span class="order-time">{{ formatTime(o.createdAt) }}</span>
+            <span class="order-store"><el-icon><Shop /></el-icon>{{ o.storeName || '商家店铺' }}</span>
           </div>
           <div class="oh-right">
             <el-icon :size="18" :color="statusMap[o.status]?.color" class="oh-icon">
@@ -40,7 +41,14 @@
         </div>
 
         <div class="order-foot">
-          <span class="of-total">共 {{ itemCount(o) }} 件，合计 <b>¥ {{ centToYuan(o.totalAmountCent) }}</b></span>
+          <span class="of-total">
+            共 {{ itemCount(o) }} 件
+            <template v-if="(o.discountAmountCent || 0) > 0">，{{ o.promoCode || '店铺优惠' }} 已优惠 ¥ {{ centToYuan(o.discountAmountCent) }}</template>
+            ，合计 <b>¥ {{ centToYuan(o.totalAmountCent) }}</b>
+          </span>
+          <el-button class="contact-merchant-btn" size="small" @click.stop="contactMerchant(o)">
+            <el-icon><ChatDotRound /></el-icon> 联系商家
+          </el-button>
         </div>
       </div>
     </div>
@@ -49,14 +57,18 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import PageHeader from '../../components/PageHeader.vue'
 import { myOrders } from '../../api/customer'
+import { customerChatApi } from '../../api/chat'
 import { centToYuan } from '../../utils/money'
 import type { Order } from '../../types'
 
 const loading = ref(false)
 const orders = ref<Order[]>([])
 const activeTab = ref('all')
+const router = useRouter()
 
 const tabs = [
   { key: 'all', label: '全部' },
@@ -102,6 +114,16 @@ function formatTime(t?: string) {
   return String(t).replace('T', ' ').slice(0, 19)
 }
 
+async function contactMerchant(order: Order) {
+  const productId = order.items?.[0]?.productId
+  if (!productId) {
+    ElMessage.warning('订单中没有可咨询的商品')
+    return
+  }
+  const conversation = await customerChatApi.open(productId)
+  router.push({ path: '/shop/chat', query: { conversationId: String(conversation.id) } })
+}
+
 onMounted(async () => {
   loading.value = true
   try {
@@ -139,6 +161,7 @@ onMounted(async () => {
 .oh-left { display: flex; flex-direction: column; gap: 4px; }
 .order-no { font-size: 14px; font-weight: 600; color: var(--of-text); }
 .order-time { font-size: 12px; color: var(--of-text-3); }
+.order-store { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #b45309; }
 .oh-right { display: flex; align-items: center; gap: 6px; }
 .oh-status { font-size: 14px; font-weight: 600; }
 
@@ -149,7 +172,16 @@ onMounted(async () => {
 .oi-qty { color: var(--of-text-2); }
 .oi-price { color: var(--of-text-2); width: 90px; text-align: right; }
 
-.order-foot { display: flex; justify-content: flex-end; padding-top: 10px; border-top: 1px dashed var(--of-border); }
+.order-foot { display: flex; justify-content: flex-end; align-items: center; gap: 14px; padding-top: 10px; border-top: 1px dashed var(--of-border); }
 .of-total { font-size: 14px; color: var(--of-text-2); }
 .of-total b { color: #ef4444; font-size: 18px; margin-left: 4px; }
+.contact-merchant-btn {
+  min-width: 112px; color: #fff !important; font-weight: 700;
+  background: #2563eb !important; border-color: #2563eb !important;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.24);
+}
+.contact-merchant-btn:hover, .contact-merchant-btn:focus {
+  color: #fff !important; background: #1d4ed8 !important; border-color: #1d4ed8 !important;
+}
+.contact-merchant-btn :deep(.el-icon) { color: #fff; margin-right: 4px; }
 </style>

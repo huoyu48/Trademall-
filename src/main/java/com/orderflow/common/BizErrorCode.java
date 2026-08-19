@@ -13,6 +13,7 @@ public enum BizErrorCode {
     TENANT_NOT_FOUND(40401, "租户不存在"),
     TENANT_CODE_DUPLICATED(40908, "租户编码已存在"),
     PRODUCT_CODE_DUPLICATED(40901, "商品编码已存在"),
+    STORE_NAME_DUPLICATED(40910, "店铺名称已存在，请换一个名称"),
     PRODUCT_NOT_FOUND(40402, "商品不存在"),
     PRODUCT_DISABLED(40902, "商品已停用"),
     PRODUCT_NOT_IN_TENANT(40301, "商品不属于当前租户"),

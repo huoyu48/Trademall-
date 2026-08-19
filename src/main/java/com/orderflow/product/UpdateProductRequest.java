@@ -14,4 +14,6 @@ public class UpdateProductRequest {
     private Long unitPriceCent;
     @NotNull(message = "状态不能为空")
     private Integer status;
+    private Long categoryId;
+    private Long storeId;
 }
