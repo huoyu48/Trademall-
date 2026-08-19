@@ -46,21 +46,34 @@
             <template v-if="(o.discountAmountCent || 0) > 0">，{{ o.promoCode || '店铺优惠' }} 已优惠 ¥ {{ centToYuan(o.discountAmountCent) }}</template>
             ，合计 <b>¥ {{ centToYuan(o.totalAmountCent) }}</b>
           </span>
+          <el-button v-if="o.status === 'PENDING_PAYMENT'" type="primary" size="small" :loading="payingOrderId === o.id"
+                     @click.stop="pay(o)">支付宝付款</el-button>
+          <el-button v-if="o.status === 'PENDING_PAYMENT'" type="danger" plain size="small" :loading="cancellingOrderId === o.id"
+                     @click.stop="cancelOrder(o)">取消订单</el-button>
           <el-button class="contact-merchant-btn" size="small" @click.stop="contactMerchant(o)">
             <el-icon><ChatDotRound /></el-icon> 联系商家
           </el-button>
         </div>
       </div>
     </div>
+
+    <el-dialog v-model="paymentDialogVisible" title="支付宝沙箱付款" width="390px" align-center @closed="stopPaymentPolling">
+      <div class="payment-dialog">
+        <p>请使用支付宝沙箱版 App 扫描二维码完成模拟付款</p>
+        <img v-if="paymentQrCodeImage" class="payment-qr-code" :src="paymentQrCodeImage" alt="支付宝付款二维码" />
+        <p class="payment-amount">应付 ¥ {{ paymentAmount }}</p>
+        <p class="payment-hint">支付成功后，订单会自动更新为“已付款，待商家确认”</p>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '../../components/PageHeader.vue'
-import { myOrders } from '../../api/customer'
+import { alipayPaymentStatus, cancelPendingPaymentOrder, createAlipayCheckout, myOrders } from '../../api/customer'
 import { customerChatApi } from '../../api/chat'
 import { centToYuan } from '../../utils/money'
 import type { Order } from '../../types'
@@ -68,7 +81,14 @@ import type { Order } from '../../types'
 const loading = ref(false)
 const orders = ref<Order[]>([])
 const activeTab = ref('all')
+const payingOrderId = ref<number | null>(null)
+const cancellingOrderId = ref<number | null>(null)
+const paymentDialogVisible = ref(false)
+const paymentQrCodeImage = ref('')
+const paymentAmount = ref('0.00')
+const payingDialogOrderId = ref<number | null>(null)
 const router = useRouter()
+let paymentPollingTimer: ReturnType<typeof setInterval> | null = null
 
 const tabs = [
   { key: 'all', label: '全部' },
@@ -79,6 +99,8 @@ const tabs = [
 ]
 
 const statusMap: Record<string, { label: string; color: string; icon: string }> = {
+  PENDING_PAYMENT: { label: '待付款', color: '#f59e0b', icon: 'Wallet' },
+  PAID: { label: '已付款，待商家确认', color: '#6366f1', icon: 'CircleCheck' },
   CREATED: { label: '已创建', color: '#3b82f6', icon: 'Document' },
   CONFIRMED: { label: '已确认', color: '#f59e0b', icon: 'CircleCheck' },
   SHIPPED: { label: '已发货', color: '#8b5cf6', icon: 'Van' },
@@ -89,7 +111,7 @@ const statusMap: Record<string, { label: string; color: string; icon: string }> 
 }
 
 const GROUP: Record<string, string> = {
-  CREATED: 'progress', CONFIRMED: 'progress', SHIPPED: 'progress',
+  PENDING_PAYMENT: 'progress', PAID: 'progress', CREATED: 'progress', CONFIRMED: 'progress', SHIPPED: 'progress',
   COMPLETED: 'completed',
   REFUNDING: 'refund', REFUNDED: 'refund',
   CANCELLED: 'cancelled'
@@ -124,14 +146,77 @@ async function contactMerchant(order: Order) {
   router.push({ path: '/shop/chat', query: { conversationId: String(conversation.id) } })
 }
 
-onMounted(async () => {
+async function pay(order: Order) {
+  payingOrderId.value = order.id
+  try {
+    const checkout = await createAlipayCheckout(order.id)
+    paymentQrCodeImage.value = checkout.qrCodeImage
+    paymentAmount.value = centToYuan(checkout.amountCent)
+    payingDialogOrderId.value = order.id
+    paymentDialogVisible.value = true
+    startPaymentPolling()
+  } finally {
+    payingOrderId.value = null
+  }
+}
+
+async function cancelOrder(order: Order) {
+  try {
+    await ElMessageBox.confirm('取消后商品库存会立即释放，已生成的付款码也将失效。确认取消该订单吗？', '取消订单', {
+      confirmButtonText: '确认取消',
+      cancelButtonText: '暂不取消',
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
+
+  cancellingOrderId.value = order.id
+  try {
+    await cancelPendingPaymentOrder(order.id)
+    ElMessage.success('订单已取消，商品库存已释放')
+    await loadOrders()
+  } finally {
+    cancellingOrderId.value = null
+  }
+}
+
+function stopPaymentPolling() {
+  if (paymentPollingTimer) {
+    clearInterval(paymentPollingTimer)
+    paymentPollingTimer = null
+  }
+}
+
+function startPaymentPolling() {
+  stopPaymentPolling()
+  paymentPollingTimer = setInterval(async () => {
+    const orderId = payingDialogOrderId.value
+    if (!orderId) return
+    try {
+      const status = await alipayPaymentStatus(orderId)
+      if (!status.paid) return
+      stopPaymentPolling()
+      paymentDialogVisible.value = false
+      await loadOrders()
+      ElMessage.success('支付成功，订单已进入待商家确认状态')
+    } catch {
+      // 网络瞬时失败不打断顾客扫码，下一轮轮询会继续确认状态。
+    }
+  }, 2000)
+}
+
+async function loadOrders() {
   loading.value = true
   try {
     orders.value = await myOrders()
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(loadOrders)
+onUnmounted(stopPaymentPolling)
 </script>
 
 <style scoped>
@@ -184,4 +269,9 @@ onMounted(async () => {
   color: #fff !important; background: #1d4ed8 !important; border-color: #1d4ed8 !important;
 }
 .contact-merchant-btn :deep(.el-icon) { color: #fff; margin-right: 4px; }
+.payment-dialog { text-align: center; color: var(--of-text-2); }
+.payment-dialog > p:first-child { margin-top: 0; font-size: 14px; }
+.payment-qr-code { display: block; width: 280px; height: 280px; margin: 14px auto; border: 8px solid #fff; border-radius: 10px; box-shadow: 0 3px 16px rgba(15, 23, 42, 0.12); }
+.payment-amount { color: #ef4444; font-size: 20px; font-weight: 700; margin: 8px 0; }
+.payment-hint { color: var(--of-text-3); font-size: 12px; line-height: 1.6; }
 </style>

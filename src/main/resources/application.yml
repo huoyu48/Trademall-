@@ -61,6 +61,16 @@ orderflow:
     default-tenant-code: t-a
   order:
     timeout-minutes: 30
+  payment:
+    alipay:
+      # 默认关闭，避免没有本地私钥时把“付款”误接到生产/沙箱网关。
+      enabled: ${ORDERFLOW_ALIPAY_ENABLED:false}
+      app-id: ${ORDERFLOW_ALIPAY_APP_ID:9021000167606334}
+      gateway-url: "${ORDERFLOW_ALIPAY_GATEWAY_URL:https://openapi-sandbox.dl.alipaydev.com/gateway.do}"
+      app-private-key: ${ORDERFLOW_ALIPAY_APP_PRIVATE_KEY:}
+      alipay-public-key: ${ORDERFLOW_ALIPAY_PUBLIC_KEY:}
+      notify-url: ${ORDERFLOW_ALIPAY_NOTIFY_URL:}
+      return-url: "${ORDERFLOW_ALIPAY_RETURN_URL:http://localhost:8088/#/shop/orders}"
   inventory:
     low-stock-threshold: 10
   outbox:

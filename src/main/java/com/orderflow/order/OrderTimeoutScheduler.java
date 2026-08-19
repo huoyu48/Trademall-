@@ -3,6 +3,7 @@ package com.orderflow.order;
 import com.orderflow.common.BizException;
 import com.orderflow.domain.entity.Orders;
 import com.orderflow.domain.mapper.OrdersMapper;
+import com.orderflow.payment.PaymentService;
 import com.orderflow.security.TenantContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,7 +17,7 @@ import java.util.List;
 /**
  * 订单超时自动取消调度。
  * <p>
- * 周期性扫描仍处于 CREATED（已创建但未确认/支付）且超过 {@code timeout-minutes} 的订单，
+ * 周期性扫描仍处于 PENDING_PAYMENT（待付款）的订单；CREATED 仅为兼容历史手工订单，
  * 自动执行取消并释放其预占库存。这是电商“关单”能力的典型实现，
  * 既能避免库存被长期无效占用，也体现了状态机 + 定时任务 + 库存回补的组合运用。
  * <p>
@@ -29,12 +30,14 @@ public class OrderTimeoutScheduler {
 
     private final OrdersMapper ordersMapper;
     private final OrderService orderService;
+    private final PaymentService paymentService;
     private final long timeoutMinutes;
 
-    public OrderTimeoutScheduler(OrdersMapper ordersMapper, OrderService orderService,
+    public OrderTimeoutScheduler(OrdersMapper ordersMapper, OrderService orderService, PaymentService paymentService,
                                  @Value("${orderflow.order.timeout-minutes:30}") long timeoutMinutes) {
         this.ordersMapper = ordersMapper;
         this.orderService = orderService;
+        this.paymentService = paymentService;
         this.timeoutMinutes = timeoutMinutes;
     }
 
@@ -45,11 +48,13 @@ public class OrderTimeoutScheduler {
         if (timedOut.isEmpty()) {
             return;
         }
-        log.info("扫描到 {} 个超时未处理订单（超过 {} 分钟），开始自动取消", timedOut.size(), timeoutMinutes);
+        log.info("扫描到 {} 个超时未付款订单（超过 {} 分钟），开始自动取消", timedOut.size(), timeoutMinutes);
         for (Orders order : timedOut) {
             try {
                 TenantContext.set(order.getTenantId(), order.getCreatedBy(), "scheduler");
                 orderService.cancel(order.getId());
+                // 本地状态与库存先原子回滚；随后尽力关闭支付宝侧同一笔交易，避免继续付款。
+                paymentService.closePendingAlipayPayment(order);
                 log.info("订单 {} 已超时自动取消", order.getOrderNo());
             } catch (BizException e) {
                 log.warn("订单 {} 自动取消被拒绝：{}", order.getOrderNo(), e.getMessage());

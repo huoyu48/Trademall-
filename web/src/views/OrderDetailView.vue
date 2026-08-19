@@ -80,16 +80,17 @@ const loading = ref(false)
 const order = ref<any>(null)
 const history = ref<any[]>([])
 
-const steps = [
-  { status: 'CREATED', label: '已创建' },
+const steps = computed(() => [
+  { status: 'PENDING_PAYMENT', label: '待付款' },
+  { status: 'PAID', label: '已付款' },
   { status: 'CONFIRMED', label: '已确认' },
   { status: 'SHIPPED', label: '已发货' },
   { status: 'COMPLETED', label: '已完成' }
-]
+])
 const stepActive = computed(() => {
   if (!order.value) return 0
   if (order.value.status === 'CANCELLED') return -1
-  return Math.max(0, steps.findIndex(s => s.status === order.value.status))
+  return Math.max(0, steps.value.findIndex(s => s.status === order.value.status))
 })
 const stepProcessStatus = computed(() => (order.value?.status === 'CANCELLED' ? 'error' : 'process'))
 const actions = computed(() => (order.value ? TRANSITIONS[order.value.status] || [] : []))

@@ -6,6 +6,7 @@ import com.orderflow.domain.entity.Orders;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 import java.util.Map;
@@ -25,8 +26,13 @@ public interface OrdersMapper extends BaseMapper<Orders> {
     List<Orders> findByCustomerId(@Param("customerId") Long customerId);
 
     @InterceptorIgnore(tenantLine = "true")
-    @Select("SELECT * FROM orders WHERE status = 'CREATED' AND created_at < #{cutoff}")
+    @Select("SELECT * FROM orders WHERE status IN ('PENDING_PAYMENT', 'CREATED') AND created_at < #{cutoff}")
     List<Orders> findTimedOut(@Param("cutoff") java.time.LocalDateTime cutoff);
+
+    /** 条件更新保证同一订单的重复通知只会有一次真正的状态流转。 */
+    @InterceptorIgnore(tenantLine = "true")
+    @Update("UPDATE orders SET status = 'PAID' WHERE id = #{orderId} AND customer_id = #{customerId} AND status = 'PENDING_PAYMENT'")
+    int markPaid(@Param("orderId") Long orderId, @Param("customerId") Long customerId);
 
     @Select("SELECT status, COUNT(*) AS cnt FROM orders WHERE tenant_id = #{tenantId} GROUP BY status")
     List<Map<String, Object>> countByStatus(@Param("tenantId") Long tenantId);

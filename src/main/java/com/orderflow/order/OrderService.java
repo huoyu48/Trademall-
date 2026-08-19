@@ -30,6 +30,9 @@ public interface OrderService {
 
     OrderDTO cancel(Long orderId);
 
+    /** 顾客仅能取消自己仍未付款的订单；取消后回补预占库存。 */
+    OrderDTO cancelPendingPaymentByCustomer(Long orderId, Long customerId);
+
     List<OrderStatusHistoryDTO> getHistory(Long orderId);
 
     OrderStatsDTO stats();

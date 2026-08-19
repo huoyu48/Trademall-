@@ -47,6 +47,29 @@ export function previewOrder(items: { productId: number; quantity: number }[], p
   return http.post<OrderPricing>('/customer/orders/preview', { items, promoCode })
 }
 
+export interface AlipayCheckout {
+  paymentNo: string
+  amountCent: number
+  qrCodeImage: string
+}
+
+export function createAlipayCheckout(id: number) {
+  return http.post<AlipayCheckout>(`/customer/orders/${id}/payments/alipay`)
+}
+
+export interface AlipayPaymentStatus {
+  orderStatus: string
+  paid: boolean
+}
+
+export function alipayPaymentStatus(id: number) {
+  return http.get<AlipayPaymentStatus>(`/customer/orders/${id}/payments/alipay/status`)
+}
+
+export function cancelPendingPaymentOrder(id: number) {
+  return http.post<Order>(`/customer/orders/${id}/cancel`)
+}
+
 export function myOrders() {
   return http.get<Order[]>('/customer/orders')
 }

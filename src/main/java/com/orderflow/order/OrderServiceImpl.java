@@ -108,7 +108,8 @@ public class OrderServiceImpl implements OrderService {
         boolean crossTenant = explicitTenantId != null && !explicitTenantId.equals(TenantContext.getTenantId());
         if (crossTenant) TenantContext.setIgnoreTenant(true);
         try {
-            return doCreate(request, idempotencyKey, tenantId);
+            // 顾客接口会传 explicitTenantId，因此进入待付款；商家后台手工建单保留历史“已创建”流程。
+            return doCreate(request, idempotencyKey, tenantId, explicitTenantId != null);
         } finally {
             if (crossTenant) TenantContext.setIgnoreTenant(false);
             // 事务提交/回滚后再释放，避免锁已放开但库存、订单尚未提交。
@@ -219,7 +220,8 @@ public class OrderServiceImpl implements OrderService {
     private record ProductLock(String key, String value) {
     }
 
-    private OrderDTO doCreate(CreateOrderRequest request, String idempotencyKey, Long tenantId) {
+    private OrderDTO doCreate(CreateOrderRequest request, String idempotencyKey, Long tenantId,
+                              boolean pendingPayment) {
         // 幂等：先查旧订单
         Orders existing = ordersMapper.findByIdempotencyKey(tenantId, idempotencyKey);
         if (existing != null) {
@@ -283,7 +285,8 @@ public class OrderServiceImpl implements OrderService {
         order.setCustomerId(request.getCustomerId());
         order.setStoreId(storeId);
         order.setStoreNameSnapshot(storeNameSnapshot);
-        order.setStatus(OrderStatus.CREATED.name());
+        OrderStatus initialStatus = pendingPayment ? OrderStatus.PENDING_PAYMENT : OrderStatus.CREATED;
+        order.setStatus(initialStatus.name());
         order.setPromoCode(appliedPromo);
         order.setDiscountAmountCent(discount > 0 ? discount : null);
         order.setTotalAmountCent(total);
@@ -315,7 +318,8 @@ public class OrderServiceImpl implements OrderService {
             orderItemMapper.insert(oi);
         }
 
-        insertHistory(order.getId(), tenantId, null, OrderStatus.CREATED.name(), "创建订单");
+        insertHistory(order.getId(), tenantId, null, initialStatus.name(),
+                pendingPayment ? "提交订单，等待付款" : "创建订单");
         auditLogService.write("CREATE_ORDER", "order", String.valueOf(order.getId()),
                 null, "orderNo=" + order.getOrderNo());
 
@@ -444,6 +448,33 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
+    public OrderDTO cancelPendingPaymentByCustomer(Long orderId, Long customerId) {
+        Long previousTenantId = TenantContext.getTenantId();
+        Long previousUserId = TenantContext.getUserId();
+        String previousUsername = TenantContext.getUsername();
+        boolean previousIgnore = TenantContext.isIgnoreTenant();
+        try {
+            // “我的订单”可跨商家展示，先跨租户读取，再按 customerId 做归属校验。
+            TenantContext.setIgnoreTenant(true);
+            Orders order = ordersMapper.selectById(orderId);
+            if (order == null) throw new BizException(40403, "订单不存在");
+            if (!Objects.equals(customerId, order.getCustomerId())) throw new BizException(40303, "无权取消该订单");
+            if (!OrderStatus.PENDING_PAYMENT.name().equals(order.getStatus())) {
+                throw new BizException(BizErrorCode.CANCEL_NOT_ALLOWED);
+            }
+
+            // 复用状态机和库存回补链路，但以订单所属商家租户执行，避免跨租户订单被拦截。
+            TenantContext.set(order.getTenantId(), customerId, previousUsername);
+            TenantContext.setIgnoreTenant(false);
+            return transit(orderId, OrderStatus.CANCELLED, "CUSTOMER_CANCEL_PENDING_PAYMENT", true);
+        } finally {
+            TenantContext.set(previousTenantId, previousUserId, previousUsername);
+            TenantContext.setIgnoreTenant(previousIgnore);
+        }
+    }
+
+    @Override
+    @Transactional
     public OrderDTO applyRefund(Long orderId) {
         return transit(orderId, OrderStatus.REFUNDING, "APPLY_REFUND", false);
     }
@@ -497,7 +528,7 @@ public class OrderServiceImpl implements OrderService {
             long cnt = ((Number) m.get("cnt")).longValue();
             dist.add(new OrderStatsDTO.StatusCount(status, cnt));
             total += cnt;
-            if ("CREATED".equals(status)) pending = cnt;
+            if ("PAID".equals(status)) pending = cnt;
             if ("COMPLETED".equals(status)) completed = cnt;
         }
         dto.setStatusDistribution(dist);

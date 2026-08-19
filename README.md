@@ -11,7 +11,10 @@
   Redis 分布式锁只串行化同一商家的同一商品；多商品订单按商品 ID 顺序加锁避免死锁。数据库条件更新作为最终防线，扣库存与建订单在同一事务边界内，要么都成、要么都回滚。
 
 - **订单状态机**
-  订单生命周期 `CREATED → CONFIRMED → SHIPPED → COMPLETED`，终态 `CANCELLED`。状态只能沿允许的边流转，非法跳转被拒绝，流转全程可审计。
+  顾客订单生命周期 `PENDING_PAYMENT → PAID → CONFIRMED → SHIPPED → COMPLETED`，终态 `CANCELLED`。状态只能沿允许的边流转，非法跳转被拒绝，流转全程可审计。
+
+- **支付宝沙箱扫码支付**
+  顾客下单后生成支付宝当面付二维码；支付流水独立落库，异步回调完成 RSA2 验签、金额核验和条件更新后，订单才会进入已付款状态。支持顾客取消待付款订单与超时关单，均会回补库存并关闭待支付交易。
 
 - **异步解耦 + 可靠通知**
   下单事务内写 Outbox 事件，后台收到 RabbitMQ Broker 确认后标记已投递；消费失败重试 3 次，仍失败则进入死信队列归档，消费端按事件 ID 去重。
@@ -60,4 +63,5 @@ make stress  # 服务运行后，验证并发下单库存守恒
 | [PROJECT.md](docs/PROJECT.md) | 架构设计、核心流程、数据模型 |
 | [RUN.md](docs/RUN.md) | 运行手册：启动方式、端口、账号 |
 | [TECHNICAL_QA.md](docs/TECHNICAL_QA.md) | 技术问答：核心设计的常见问题与解答 |
+| [PAYMENT.md](docs/PAYMENT.md) | 支付流程、沙箱排查记录与支付专题面试题 |
 | [VERIFICATION.md](docs/VERIFICATION.md) | 本地测试与并发/实时消息验证记录 |

@@ -57,30 +57,48 @@
         <div class="sum-row sum-total"><span>应付金额</span><b class="sum-price">¥ {{ centToYuan(selectedPayableCent) }}</b></div>
         <el-button type="primary" size="large" class="submit-btn" :loading="submitting"
                    :disabled="cart.checkedCount === 0" @click="checkout">
-          提交订单{{ cart.checkedGroups.length > 1 ? `（拆 ${cart.checkedGroups.length} 单）` : '' }}
+          支付宝付款{{ cart.checkedGroups.length > 1 ? `（拆 ${cart.checkedGroups.length} 单，依次支付）` : '' }}
         </el-button>
-        <p class="sum-tip">跨商家自动拆单；优惠和应付金额由服务端实时结算</p>
+        <p class="sum-tip">点击后将创建订单并立即展示支付宝沙箱付款码</p>
       </div>
     </div>
+
+    <el-dialog v-model="paymentDialogVisible" title="支付宝沙箱付款" width="390px" align-center
+               :close-on-click-modal="false" @closed="stopPaymentPolling">
+      <div class="payment-dialog">
+        <p v-if="paymentOrderIds.length > 1" class="payment-progress">
+          第 {{ currentPaymentIndex + 1 }} / {{ paymentOrderIds.length }} 笔订单
+        </p>
+        <p>请使用支付宝沙箱版 App 扫描二维码完成模拟付款</p>
+        <img v-if="paymentQrCodeImage" class="payment-qr-code" :src="paymentQrCodeImage" alt="支付宝付款二维码" />
+        <p class="payment-amount">应付 ¥ {{ paymentAmount }}</p>
+        <p class="payment-hint">支付成功后会自动继续下一笔订单；关闭后也可在“我的订单”中继续付款。</p>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '../../components/PageHeader.vue'
 import { useCartStore, type StoreGroup } from '../../stores/cart'
-import { createOrder, previewOrder } from '../../api/customer'
+import { alipayPaymentStatus, createAlipayCheckout, createOrder, previewOrder } from '../../api/customer'
 import { centToYuan } from '../../utils/money'
 import type { OrderPricing } from '../../types'
 
 const cart = useCartStore()
-const router = useRouter()
 const submitting = ref(false)
 const pricingByStore = ref<Record<number, OrderPricing>>({})
+const paymentDialogVisible = ref(false)
+const paymentQrCodeImage = ref('')
+const paymentAmount = ref('0.00')
+const paymentOrderIds = ref<number[]>([])
+const currentPaymentIndex = ref(0)
 // 同一次结算失败后再次点击会沿用同一 Key；成功后才清除，避免网络重试重复创建订单。
 const checkoutKeys = ref<Record<number, string>>({})
+let paymentPollingTimer: ReturnType<typeof setInterval> | null = null
+let paymentChecking = false
 
 /** 展示所有分组（含未勾选的，便于整组展示；结算只看 checkedGroups） */
 const allGroups = computed<StoreGroup[]>(() => {
@@ -132,19 +150,70 @@ async function checkout() {
   if (groups.length === 0) return
   submitting.value = true
   try {
+    const createdOrderIds: number[] = []
     // 按商家逐个下单（拆单）
     for (const g of groups) {
       const items = g.items.map((i) => ({ productId: i.productId, quantity: i.quantity }))
       const key = checkoutKeys.value[g.storeId] ||= crypto.randomUUID()
-      await createOrder(items, undefined, key)
+      const order = await createOrder(items, undefined, key)
+      createdOrderIds.push(order.id)
       g.items.forEach((i) => cart.remove(i.productId))
       delete checkoutKeys.value[g.storeId]
     }
-    ElMessage.success(`已按商家拆分为 ${groups.length} 笔订单`)
-    router.push('/shop/orders')
+    paymentOrderIds.value = createdOrderIds
+    currentPaymentIndex.value = 0
+    await showCurrentPaymentQrCode()
   } finally {
     submitting.value = false
   }
+}
+
+function currentPaymentOrderId() {
+  return paymentOrderIds.value[currentPaymentIndex.value]
+}
+
+async function showCurrentPaymentQrCode() {
+  const orderId = currentPaymentOrderId()
+  if (!orderId) return
+  const checkout = await createAlipayCheckout(orderId)
+  paymentQrCodeImage.value = checkout.qrCodeImage
+  paymentAmount.value = centToYuan(checkout.amountCent)
+  paymentDialogVisible.value = true
+  startPaymentPolling()
+}
+
+function stopPaymentPolling() {
+  if (paymentPollingTimer) {
+    clearInterval(paymentPollingTimer)
+    paymentPollingTimer = null
+  }
+  paymentChecking = false
+}
+
+function startPaymentPolling() {
+  stopPaymentPolling()
+  paymentPollingTimer = setInterval(async () => {
+    const orderId = currentPaymentOrderId()
+    if (!orderId || paymentChecking) return
+    paymentChecking = true
+    try {
+      const status = await alipayPaymentStatus(orderId)
+      if (!status.paid) return
+      stopPaymentPolling()
+      currentPaymentIndex.value += 1
+      if (currentPaymentOrderId()) {
+        ElMessage.success('本笔订单支付成功，请继续支付下一笔')
+        await showCurrentPaymentQrCode()
+      } else {
+        paymentDialogVisible.value = false
+        ElMessage.success('支付成功，订单已进入待商家确认状态')
+      }
+    } catch {
+      // 网络瞬时失败不打断顾客扫码，下一轮轮询会继续确认状态。
+    } finally {
+      paymentChecking = false
+    }
+  }, 2000)
 }
 
 async function batchRemove() {
@@ -156,6 +225,8 @@ async function batchRemove() {
   cart.removeChecked()
   ElMessage.success('已删除')
 }
+
+onUnmounted(stopPaymentPolling)
 </script>
 
 <style scoped>
@@ -207,6 +278,12 @@ async function batchRemove() {
 .sum-price { color: #ef4444; font-size: 24px; }
 .submit-btn { width: 100%; margin-top: 6px; font-weight: 600; }
 .sum-tip { margin: 12px 0 0; font-size: 12px; color: var(--of-text-3); text-align: center; }
+.payment-dialog { text-align: center; color: var(--of-text-2); }
+.payment-dialog > p { margin: 8px 0; font-size: 14px; }
+.payment-progress { color: #0f766e; font-weight: 700; }
+.payment-qr-code { display: block; width: 280px; height: 280px; margin: 14px auto; border: 8px solid #fff; border-radius: 10px; box-shadow: 0 3px 16px rgba(15, 23, 42, 0.12); }
+.payment-amount { color: #ef4444; font-size: 20px !important; font-weight: 700; }
+.payment-hint { color: var(--of-text-3); font-size: 12px !important; line-height: 1.6; }
 
 @media (max-width: 860px) { .cart-wrap { grid-template-columns: 1fr; } }
 </style>

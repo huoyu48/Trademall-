@@ -11,6 +11,9 @@ import com.orderflow.order.CreateOrderRequest;
 import com.orderflow.order.OrderDTO;
 import com.orderflow.order.OrderPricingDTO;
 import com.orderflow.order.OrderService;
+import com.orderflow.payment.AlipayCheckoutDTO;
+import com.orderflow.payment.AlipayPaymentStatusDTO;
+import com.orderflow.payment.PaymentService;
 import com.orderflow.product.ProductDTO;
 import com.orderflow.product.ProductService;
 import com.orderflow.security.LoginUser;
@@ -35,12 +38,14 @@ public class CustomerController {
     private final ProductService productService;
     private final OrderService orderService;
     private final CategoryService categoryService;
+    private final PaymentService paymentService;
 
     public CustomerController(ProductService productService, OrderService orderService,
-                              CategoryService categoryService) {
+                              CategoryService categoryService, PaymentService paymentService) {
         this.productService = productService;
         this.orderService = orderService;
         this.categoryService = categoryService;
+        this.paymentService = paymentService;
     }
 
     /**
@@ -90,6 +95,32 @@ public class CustomerController {
     public ApiResponse<OrderPricingDTO> previewOrder(@Valid @RequestBody CustomerOrderRequest req) {
         LoginUser me = SecurityUtils.current();
         return ApiResponse.success(orderService.preview(toOrderRequest(req, me), resolveOrderTenant(req)));
+    }
+
+    /** 生成支付宝沙箱付款二维码；订单状态只在支付宝回调验签成功后更新。 */
+    @PostMapping("/orders/{id}/payments/alipay")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ApiResponse<AlipayCheckoutDTO> startAlipayPayment(@PathVariable Long id) {
+        LoginUser me = SecurityUtils.current();
+        return ApiResponse.success(paymentService.createAlipayCheckout(id, me.getUserId()));
+    }
+
+    /** 二维码弹窗轮询本地订单状态；不信任前端传来的“支付成功”。 */
+    @GetMapping("/orders/{id}/payments/alipay/status")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ApiResponse<AlipayPaymentStatusDTO> alipayPaymentStatus(@PathVariable Long id) {
+        LoginUser me = SecurityUtils.current();
+        return ApiResponse.success(paymentService.getAlipayPaymentStatus(id, me.getUserId()));
+    }
+
+    /** 顾客主动取消待付款订单：回补库存，并关闭已生成但尚未支付的付款码。 */
+    @PostMapping("/orders/{id}/cancel")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ApiResponse<OrderDTO> cancelPendingPaymentOrder(@PathVariable Long id) {
+        LoginUser me = SecurityUtils.current();
+        OrderDTO order = orderService.cancelPendingPaymentByCustomer(id, me.getUserId());
+        paymentService.closePendingAlipayPayment(id);
+        return ApiResponse.success(order);
     }
 
     /** 我的订单：按顾客身份查全部订单（跨租户） */

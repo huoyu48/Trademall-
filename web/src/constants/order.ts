@@ -1,4 +1,6 @@
 export const ORDER_STATUS: Record<string, { label: string; type: 'primary' | 'success' | 'warning' | 'info' | 'danger' }> = {
+  PENDING_PAYMENT: { label: '待付款', type: 'warning' },
+  PAID: { label: '已付款', type: 'primary' },
   CREATED: { label: '已创建', type: 'primary' },
   CONFIRMED: { label: '已确认', type: 'warning' },
   SHIPPED: { label: '已发货', type: 'info' },
@@ -10,6 +12,8 @@ export const ORDER_STATUS: Record<string, { label: string; type: 'primary' | 'su
 
 // 状态机允许的流转动作
 export const TRANSITIONS: Record<string, ('confirm' | 'ship' | 'complete' | 'cancel')[]> = {
+  PENDING_PAYMENT: [],
+  PAID: ['confirm', 'cancel'],
   CREATED: ['confirm', 'cancel'],
   CONFIRMED: ['ship', 'cancel'],
   SHIPPED: ['complete'],

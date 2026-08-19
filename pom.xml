@@ -26,7 +26,7 @@
         <jjwt.version>0.12.6</jjwt.version>
     </properties>
 
-    <dependencies>
+  <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
@@ -97,6 +97,25 @@
             <artifactId>jjwt-jackson</artifactId>
             <version>${jjwt.version}</version>
             <scope>runtime</scope>
+        </dependency>
+
+        <!-- 支付宝预创建交易返回二维码字符串，服务端生成 PNG 供商城展示。 -->
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+            <version>3.5.3</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>javase</artifactId>
+            <version>3.5.3</version>
+        </dependency>
+
+        <!-- 官方 SDK 负责支付宝请求参数编码与签名，避免手写签名出现字符集不一致。 -->
+        <dependency>
+            <groupId>com.alipay.sdk</groupId>
+            <artifactId>alipay-sdk-java</artifactId>
+            <version>4.40.934.ALL</version>
         </dependency>
 
         <!-- Lombok -->
