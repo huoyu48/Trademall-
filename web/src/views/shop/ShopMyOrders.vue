@@ -23,6 +23,9 @@
             <span class="order-no">订单号 {{ o.orderNo }}</span>
             <span class="order-time">{{ formatTime(o.createdAt) }}</span>
             <span class="order-store"><el-icon><Shop /></el-icon>{{ o.storeName || '商家店铺' }}</span>
+            <span v-if="o.status === 'PENDING_PAYMENT'" class="payment-timeout-tip">
+  请在 30 分钟内完成付款，超时订单将自动取消
+            </span>
           </div>
           <div class="oh-right">
             <el-icon :size="18" :color="statusMap[o.status]?.color" class="oh-icon">
@@ -260,6 +263,10 @@ onUnmounted(stopPaymentPolling)
 </script>
 
 <style scoped>
+.payment-timeout-tip {
+  color: #f59e0b;
+  font-size: 12px;
+}
 .empty { padding: 60px 0; }
 
 .tabs { display: flex; gap: 8px; margin-bottom: 18px; }
