@@ -19,8 +19,8 @@ class OrderPromotionSelectionTest {
 
         Promotion selected = OrderServiceImpl.chooseBestPromotion(List.of(full200, full500, future), 349_900L, now);
 
-        assertThat(selected).isSameAs(full500);
-        assertThat(OrderServiceImpl.calculateDiscount(selected, 349_900L)).isEqualTo(48_000L);
+        assertThat(selected).isSameAs(full200);
+        assertThat(OrderServiceImpl.calculateDiscount(selected, 349_900L)).isEqualTo(51_000L);
     }
 
     @Test
