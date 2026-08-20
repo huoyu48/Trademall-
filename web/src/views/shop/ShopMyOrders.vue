@@ -28,7 +28,7 @@
             <el-icon :size="18" :color="statusMap[o.status]?.color" class="oh-icon">
               <component :is="statusMap[o.status]?.icon || 'CircleCheck'" />
             </el-icon>
-            <span class="oh-status" :style="{ color: statusMap[o.status]?.color }">{{ statusMap[o.status]?.label || o.status }}</span>
+            <span class="oh-status" :style="{ color: statusMap[o.status]?.color }">{{ displayStatus(o) }}</span>
           </div>
         </div>
 
@@ -52,6 +52,11 @@
                      @click.stop="cancelOrder(o)">取消订单</el-button>
           <el-button v-if="canApplyRefund(o.status)" type="warning" plain size="small" :loading="refundingOrderId === o.id"
                      @click.stop="openRefund(o)">申请退款</el-button>
+          <el-button v-if="canApplyReturn(o.status)" type="warning" plain size="small" :loading="returningOrderId === o.id"
+                     @click.stop="openReturn(o)">申请退货</el-button>
+          <el-button v-if="returnShipmentFor(o)" class="return-shipment-btn" size="small" @click.stop="openShipment(returnShipmentFor(o))">
+            填写退货物流
+          </el-button>
           <el-button class="contact-merchant-btn" size="small" @click.stop="contactMerchant(o)">
             <el-icon><ChatDotRound /></el-icon> 联系商家
           </el-button>
@@ -77,6 +82,25 @@
         <el-button type="warning" :loading="refundingOrderId !== null" @click="submitRefund">提交退款申请</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="returnDialogVisible" title="申请退货退款" width="420px" align-center>
+      <el-alert type="warning" :closable="false" show-icon title="商家同意后，请填写寄回商品的物流单号；商家确认收货后才会退款。" />
+      <el-input v-model="returnReason" class="refund-reason" type="textarea" :rows="3" maxlength="120" show-word-limit
+                placeholder="请填写退货原因，例如：商品与描述不符" />
+      <template #footer>
+        <el-button @click="returnDialogVisible = false">暂不申请</el-button>
+        <el-button type="warning" :loading="returningOrderId !== null" @click="submitReturn">提交退货申请</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="shipmentDialogVisible" title="填写退货物流" width="420px" align-center>
+      <el-alert type="info" :closable="false" show-icon title="请在寄回商品后填写物流单号，商家将据此确认收货。" />
+      <el-input v-model="returnTrackingNo" class="refund-reason" maxlength="64" placeholder="请输入物流单号" />
+      <template #footer>
+        <el-button @click="shipmentDialogVisible = false">暂不填写</el-button>
+        <el-button type="primary" :loading="shipmentSubmitting" @click="submitShipment">确认已寄回</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -85,7 +109,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '../../components/PageHeader.vue'
-import { applyCustomerRefund, cancelPendingPaymentOrder, createMockCheckout, myOrders, paymentStatus } from '../../api/customer'
+import { applyCustomerRefund, applyCustomerReturn, cancelPendingPaymentOrder, createMockCheckout, customerRefunds, myOrders, paymentStatus, submitReturnShipment } from '../../api/customer'
 import { customerChatApi } from '../../api/chat'
 import { centToYuan } from '../../utils/money'
 import type { Order } from '../../types'
@@ -99,6 +123,15 @@ const refundingOrderId = ref<number | null>(null)
 const refundDialogVisible = ref(false)
 const refundOrder = ref<Order | null>(null)
 const refundReason = ref('')
+const afterSales = ref<any[]>([])
+const returningOrderId = ref<number | null>(null)
+const returnDialogVisible = ref(false)
+const returnOrder = ref<Order | null>(null)
+const returnReason = ref('')
+const shipmentDialogVisible = ref(false)
+const shipmentRefund = ref<any | null>(null)
+const returnTrackingNo = ref('')
+const shipmentSubmitting = ref(false)
 const paymentDialogVisible = ref(false)
 const paymentQrCodeImage = ref('')
 const paymentAmount = ref('0.00')
@@ -148,7 +181,29 @@ function itemCount(o: Order) {
 }
 
 function canApplyRefund(status: string) {
-  return ['PAID', 'CONFIRMED', 'SHIPPED', 'COMPLETED'].includes(status)
+  return ['PAID', 'CONFIRMED'].includes(status)
+}
+
+function canApplyReturn(status: string) {
+  return status === 'COMPLETED'
+}
+
+function returnShipmentFor(order: Order) {
+  const afterSale = afterSales.value.find(r => r.orderId === order.id && r.afterSaleType === 'RETURN_REFUND')
+  return afterSale?.status === 'RETURN_APPROVED' ? afterSale : null
+}
+
+function displayStatus(order: Order) {
+  const returnRefund = afterSales.value.find(r => r.orderId === order.id && r.afterSaleType === 'RETURN_REFUND')
+  const returnLabels: Record<string, string> = {
+    PENDING: '退货申请待审核',
+    RETURN_APPROVED: '退货待寄回',
+    RETURNING: '退货寄回中',
+    RETURN_RECEIVED: '商家已收货，待退款',
+    REFUNDED: '退货退款完成',
+    REJECTED: '退货申请已驳回'
+  }
+  return returnRefund ? (returnLabels[returnRefund.status] || '退货售后中') : (statusMap[order.status]?.label || order.status)
 }
 
 function formatTime(t?: string) {
@@ -221,6 +276,48 @@ async function submitRefund() {
   }
 }
 
+function openReturn(order: Order) {
+  returnOrder.value = order
+  returnReason.value = ''
+  returnDialogVisible.value = true
+}
+
+async function submitReturn() {
+  const order = returnOrder.value
+  if (!order) return
+  returningOrderId.value = order.id
+  try {
+    await applyCustomerReturn(order.id, returnReason.value)
+    ElMessage.success('退货申请已提交，等待商家审核')
+    returnDialogVisible.value = false
+    await loadOrders()
+  } finally {
+    returningOrderId.value = null
+  }
+}
+
+function openShipment(refund: any) {
+  shipmentRefund.value = refund
+  returnTrackingNo.value = refund.returnTrackingNo || ''
+  shipmentDialogVisible.value = true
+}
+
+async function submitShipment() {
+  if (!shipmentRefund.value || !returnTrackingNo.value.trim()) {
+    ElMessage.warning('请填写退货物流单号')
+    return
+  }
+  shipmentSubmitting.value = true
+  try {
+    await submitReturnShipment(shipmentRefund.value.id, returnTrackingNo.value.trim())
+    ElMessage.success('退货物流已提交，等待商家确认收货')
+    shipmentDialogVisible.value = false
+    await loadOrders()
+  } finally {
+    shipmentSubmitting.value = false
+  }
+}
+
 function stopPaymentPolling() {
   if (paymentPollingTimer) {
     clearInterval(paymentPollingTimer)
@@ -249,7 +346,9 @@ function startPaymentPolling() {
 async function loadOrders() {
   loading.value = true
   try {
-    orders.value = await myOrders()
+    const [orderList, refundList] = await Promise.all([myOrders(), customerRefunds()])
+    orders.value = orderList
+    afterSales.value = refundList
   } finally {
     loading.value = false
   }
@@ -309,6 +408,14 @@ onUnmounted(stopPaymentPolling)
   color: #fff !important; background: #1d4ed8 !important; border-color: #1d4ed8 !important;
 }
 .contact-merchant-btn :deep(.el-icon) { color: #fff; margin-right: 4px; }
+.return-shipment-btn {
+  min-width: 118px; color: #fff !important; font-weight: 700;
+  background: #5b35e6 !important; border-color: #5b35e6 !important;
+  box-shadow: 0 4px 10px rgba(91, 53, 230, 0.24);
+}
+.return-shipment-btn:hover, .return-shipment-btn:focus {
+  color: #fff !important; background: #4526bd !important; border-color: #4526bd !important;
+}
 .payment-dialog { text-align: center; color: var(--of-text-2); }
 .payment-dialog > p:first-child { margin-top: 0; font-size: 14px; }
 .payment-qr-code { display: block; width: 280px; height: 280px; margin: 14px auto; border: 8px solid #fff; border-radius: 10px; box-shadow: 0 3px 16px rgba(15, 23, 42, 0.12); }

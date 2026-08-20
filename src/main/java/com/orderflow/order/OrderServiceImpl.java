@@ -435,7 +435,9 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderDTO ship(Long orderId) {
-        return transit(orderId, OrderStatus.SHIPPED, "SHIP_ORDER", false);
+        OrderDTO dto = transit(orderId, OrderStatus.SHIPPED, "SHIP_ORDER", false);
+        consumeReservedInventory(orderId);
+        return dto;
     }
 
     @Override
@@ -485,12 +487,23 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public OrderDTO finishRefund(Long orderId) {
-        Orders order = requireOrder(orderId);
-        // 未发货退款才释放此前预占的库存；已发货订单应在退货入库后另行回补。
-        boolean releaseInventory = OrderStatus.PAID.name().equals(order.getStatus())
-                || OrderStatus.CONFIRMED.name().equals(order.getStatus());
+    public OrderDTO finishRefund(Long orderId, OrderStatus originalStatus) {
+        // 未发货退款释放预占库存；已发货/已完成订单必须等商家确认收货后才能回补。
+        boolean releaseInventory = originalStatus == OrderStatus.PAID || originalStatus == OrderStatus.CONFIRMED;
         return transit(orderId, OrderStatus.REFUNDED, "FINISH_REFUND", releaseInventory);
+    }
+
+    @Override
+    @Transactional
+    public OrderDTO finishReturnRefund(Long orderId) {
+        OrderDTO dto = transit(orderId, OrderStatus.REFUNDED, "FINISH_RETURN_REFUND", false);
+        Long tenantId = TenantContext.getTenantId();
+        for (OrderItem item : findOrderItems(orderId)) {
+            if (inventoryMapper.restockReturned(tenantId, item.getProductId(), item.getQuantity()) != 1) {
+                throw new BizException(BizErrorCode.INSUFFICIENT_INVENTORY);
+            }
+        }
+        return dto;
     }
 
     @Override
@@ -592,6 +605,19 @@ public class OrderServiceImpl implements OrderService {
             throw new BizException(BizErrorCode.ORDER_NOT_IN_TENANT);
         }
         return order;
+    }
+
+    private List<OrderItem> findOrderItems(Long orderId) {
+        return orderItemMapper.selectList(new QueryWrapper<OrderItem>().eq("order_id", orderId));
+    }
+
+    private void consumeReservedInventory(Long orderId) {
+        Long tenantId = TenantContext.getTenantId();
+        for (OrderItem item : findOrderItems(orderId)) {
+            if (inventoryMapper.ship(tenantId, item.getProductId(), item.getQuantity()) != 1) {
+                throw new BizException(BizErrorCode.INSUFFICIENT_INVENTORY);
+            }
+        }
     }
 
     private void insertHistory(Long orderId, Long tenantId, String from, String to, String remark) {

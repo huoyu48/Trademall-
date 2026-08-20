@@ -16,6 +16,18 @@ export function approveRefund(id: number) {
   return http.post<any>(`/refunds/${id}/approve`)
 }
 
+export function approveReturn(id: number) {
+  return http.post<any>(`/refunds/${id}/approve-return`)
+}
+
+export function receiveReturn(id: number) {
+  return http.post<any>(`/refunds/${id}/receive-return`)
+}
+
+export function completeReturnRefund(id: number) {
+  return http.post<any>(`/refunds/${id}/complete-return-refund`)
+}
+
 export function rejectRefund(id: number) {
   return http.post<any>(`/refunds/${id}/reject`)
 }

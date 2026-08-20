@@ -39,7 +39,10 @@ public interface OrderService {
 
     OrderDTO applyRefund(Long orderId);
 
-    OrderDTO finishRefund(Long orderId);
+    OrderDTO finishRefund(Long orderId, OrderStatus originalStatus);
+
+    /** 商家确认收到顾客寄回商品后，完成退款并把商品重新入库。 */
+    OrderDTO finishReturnRefund(Long orderId);
 
     OrderDTO closeRefund(Long orderId, OrderStatus originalStatus);
 

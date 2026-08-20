@@ -28,6 +28,21 @@ public class RefundController {
         return ApiResponse.success(service.approve(id));
     }
 
+    @PostMapping("/{id}/approve-return")
+    public ApiResponse<Refund> approveReturn(@PathVariable Long id) {
+        return ApiResponse.success(service.approveReturn(id));
+    }
+
+    @PostMapping("/{id}/receive-return")
+    public ApiResponse<Refund> receiveReturn(@PathVariable Long id) {
+        return ApiResponse.success(service.receiveReturn(id));
+    }
+
+    @PostMapping("/{id}/complete-return-refund")
+    public ApiResponse<Refund> completeReturnRefund(@PathVariable Long id) {
+        return ApiResponse.success(service.completeReturnRefund(id));
+    }
+
     @PostMapping("/{id}/reject")
     public ApiResponse<Refund> reject(@PathVariable Long id) {
         return ApiResponse.success(service.reject(id));

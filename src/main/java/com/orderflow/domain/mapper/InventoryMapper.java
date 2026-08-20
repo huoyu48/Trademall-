@@ -42,6 +42,33 @@ public interface InventoryMapper extends BaseMapper<Inventory> {
                 @Param("productId") Long productId,
                 @Param("qty") int qty);
 
+    /** 发货时将已预占库存转为实际出库。 */
+    @Update("""
+            UPDATE inventory
+            SET physical_quantity = physical_quantity - #{qty},
+                reserved_quantity = reserved_quantity - #{qty},
+                version = version + 1
+            WHERE tenant_id = #{tenantId}
+              AND product_id = #{productId}
+              AND physical_quantity >= #{qty}
+              AND reserved_quantity >= #{qty}
+            """)
+    int ship(@Param("tenantId") Long tenantId,
+             @Param("productId") Long productId,
+             @Param("qty") int qty);
+
+    /** 商家确认收到退货后，把商品加回物理库存。 */
+    @Update("""
+            UPDATE inventory
+            SET physical_quantity = physical_quantity + #{qty},
+                version = version + 1
+            WHERE tenant_id = #{tenantId}
+              AND product_id = #{productId}
+            """)
+    int restockReturned(@Param("tenantId") Long tenantId,
+                        @Param("productId") Long productId,
+                        @Param("qty") int qty);
+
     @Select("SELECT * FROM inventory WHERE tenant_id = #{tenantId} AND product_id = #{productId} LIMIT 1")
     Inventory selectByProduct(@Param("tenantId") Long tenantId, @Param("productId") Long productId);
 }

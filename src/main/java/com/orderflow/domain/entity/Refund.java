@@ -21,6 +21,13 @@ public class Refund {
     private String reason;
     private Long refundAmountCent;
     private String status;
+    /** REFUND_ONLY：仅退款；RETURN_REFUND：退货退款。 */
+    private String afterSaleType;
+    /** 顾客寄回商品后填写的物流单号。 */
+    private String returnTrackingNo;
+    private LocalDateTime returnApprovedAt;
+    private LocalDateTime returnedAt;
+    private LocalDateTime receivedAt;
     /** 退款驳回时用于把订单恢复到申请前状态。 */
     private String originalOrderStatus;
     @TableField(fill = FieldFill.INSERT)

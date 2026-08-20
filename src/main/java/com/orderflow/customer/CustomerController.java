@@ -137,6 +137,31 @@ public class CustomerController {
         return ApiResponse.success(refundService.applyByCustomer(id, me.getUserId(), reason));
     }
 
+    /** 顾客确认收货后的退货退款申请，商家同意后才可填写寄回物流单号。 */
+    @PostMapping("/orders/{id}/returns")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ApiResponse<Refund> applyReturn(@PathVariable Long id,
+                                            @RequestParam(required = false) String reason) {
+        LoginUser me = SecurityUtils.current();
+        return ApiResponse.success(refundService.applyReturnByCustomer(id, me.getUserId(), reason));
+    }
+
+    @PostMapping("/refunds/{id}/return-shipment")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ApiResponse<Refund> submitReturnShipment(@PathVariable Long id,
+                                                      @RequestParam String trackingNo) {
+        LoginUser me = SecurityUtils.current();
+        return ApiResponse.success(refundService.submitReturnShipmentByCustomer(id, me.getUserId(), trackingNo));
+    }
+
+    /** 顾客售后列表跨商家展示，但服务端始终按当前 JWT 顾客 ID 查询。 */
+    @GetMapping("/refunds")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ApiResponse<List<Refund>> myRefunds() {
+        LoginUser me = SecurityUtils.current();
+        return ApiResponse.success(refundService.listByCustomer(me.getUserId()));
+    }
+
     /** 我的订单：按顾客身份查全部订单（跨租户） */
     @GetMapping("/orders")
     @PreAuthorize("hasRole('CUSTOMER')")
