@@ -3,33 +3,26 @@ package com.orderflow.order;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * 订单状态机：定义合法的状态流转。
- */
+/** 订单履约状态机：售后进度由退款单单独记录，不能混入订单主状态。 */
 public enum OrderStatus {
     /** 顾客刚下单，库存已预占，等待付款。 */
     PENDING_PAYMENT,
-    /** 顾客付款成功，等待商家确认。 */
-    PAID,
-    /** 兼容商家后台历史手工订单。 */
-    CREATED,
-    CONFIRMED,
+    /** 已付款，等待商家确认是否接单。 */
+    PENDING_MERCHANT_CONFIRMATION,
+    /** 商家已确认，等待发货。 */
+    PENDING_SHIPMENT,
     SHIPPED,
     COMPLETED,
     CANCELLED,
-    REFUNDING,
     REFUNDED;
 
     private static final Map<OrderStatus, Set<OrderStatus>> TRANSITIONS = Map.of(
-            PENDING_PAYMENT, Set.of(PAID, CANCELLED),
-            // 已付款后不能再直接取消；商家无法履约时必须进入退款流程，保留资金记录。
-            PAID, Set.of(CONFIRMED, REFUNDING),
-            CREATED, Set.of(CONFIRMED, CANCELLED),
-            CONFIRMED, Set.of(SHIPPED, REFUNDING),
-            SHIPPED, Set.of(COMPLETED, REFUNDING),
-            COMPLETED, Set.of(REFUNDING),
-            // 驳回退款申请后返回申请前状态；退款成功才进入终态 REFUNDED。
-            REFUNDING, Set.of(PAID, CONFIRMED, SHIPPED, COMPLETED, REFUNDED)
+            PENDING_PAYMENT, Set.of(PENDING_MERCHANT_CONFIRMATION, CANCELLED),
+            PENDING_MERCHANT_CONFIRMATION, Set.of(PENDING_SHIPMENT, REFUNDED),
+            PENDING_SHIPMENT, Set.of(SHIPPED, REFUNDED),
+            SHIPPED, Set.of(COMPLETED),
+            // 已完成的退货退款在售后单走完“审核、寄回、收货、退款”后才进入已退款。
+            COMPLETED, Set.of(REFUNDED)
     );
 
     public static boolean canTransition(OrderStatus from, OrderStatus to) {

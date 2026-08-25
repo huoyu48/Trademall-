@@ -19,3 +19,11 @@ export function approveRefund(id: number) {
 export function rejectRefund(id: number) {
   return http.post<any>(`/refunds/${id}/reject`)
 }
+
+export function confirmReturnReceived(id: number) {
+  return http.post<any>(`/refunds/${id}/receive-return`)
+}
+
+export function completeRefund(id: number) {
+  return http.post<any>(`/refunds/${id}/complete-refund`)
+}

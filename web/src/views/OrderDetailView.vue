@@ -50,7 +50,7 @@
       </el-table>
 
       <div class="actions" v-if="actions.length">
-        <el-button v-for="a in actions" :key="a" :type="a === 'cancel' ? 'danger' : a === 'refund' ? 'warning' : 'primary'"
+        <el-button v-for="a in actions" :key="a" type="primary"
           @click="doTransition(a)">{{ TRANSITION_LABEL[a] }}</el-button>
       </div>
       <el-alert v-else class="mt" title="当前状态无可用操作" type="info" :closable="false" />
@@ -80,7 +80,6 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getOrder, transitionOrder, getOrderHistory } from '../api/order'
-import { applyRefund } from '../api/refund'
 import { centToYuan } from '../utils/money'
 import { ORDER_STATUS as statusMap, TRANSITIONS, TRANSITION_LABEL } from '../constants/order'
 
@@ -92,8 +91,8 @@ const history = ref<any[]>([])
 
 const steps = computed(() => [
   { status: 'PENDING_PAYMENT', label: '待付款' },
-  { status: 'PAID', label: '已付款' },
-  { status: 'CONFIRMED', label: '已确认' },
+  { status: 'PENDING_MERCHANT_CONFIRMATION', label: '待商家确认' },
+  { status: 'PENDING_SHIPMENT', label: '待发货' },
   { status: 'SHIPPED', label: '已发货' },
   { status: 'COMPLETED', label: '已完成' }
 ])
@@ -123,19 +122,7 @@ async function load() {
     history.value = h || []
   } finally { loading.value = false }
 }
-async function doTransition(action: 'confirm' | 'ship' | 'complete' | 'cancel' | 'refund') {
-  if (action === 'refund') {
-    await ElMessageBox.confirm(
-      `确认对订单 ${order.value.orderNo} 发起模拟退款？退款确认后，未发货订单会释放预占库存。`,
-      '发起模拟退款', { type: 'warning' }
-    )
-    try {
-      await applyRefund(order.value.id, '商家发起模拟退款')
-      ElMessage.success('退款申请已提交，请在退款售后中确认模拟退款')
-      load()
-    } catch { /* 后端会校验订单状态 */ }
-    return
-  }
+async function doTransition(action: 'confirm' | 'ship' | 'complete') {
   await ElMessageBox.confirm(`确认对订单 ${order.value.orderNo} 执行「${TRANSITION_LABEL[action]}」？`, '提示', { type: 'warning' })
   try {
     await transitionOrder(order.value.id, action)

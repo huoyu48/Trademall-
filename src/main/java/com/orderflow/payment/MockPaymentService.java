@@ -106,7 +106,8 @@ public class MockPaymentService implements PaymentService {
             if (!Objects.equals(customerId, order.getCustomerId())) throw new BizException(40303, "无权查看该订单支付状态");
             PaymentStatusDTO result = new PaymentStatusDTO();
             result.setOrderStatus(order.getStatus());
-            result.setPaid(OrderStatus.PAID.name().equals(order.getStatus()));
+            result.setPaid(!OrderStatus.PENDING_PAYMENT.name().equals(order.getStatus())
+                    && !OrderStatus.CANCELLED.name().equals(order.getStatus()));
             return result;
         } finally {
             TenantContext.setIgnoreTenant(previousIgnore);
@@ -145,7 +146,7 @@ public class MockPaymentService implements PaymentService {
             }
             if (ordersMapper.markPaid(order.getId(), order.getCustomerId()) != 1) {
                 Orders latest = ordersMapper.selectById(order.getId());
-                if (latest == null || !OrderStatus.PAID.name().equals(latest.getStatus())) {
+                if (latest == null || !OrderStatus.PENDING_MERCHANT_CONFIRMATION.name().equals(latest.getStatus())) {
                     throw new BizException(40911, "订单状态已变化，请返回商城刷新");
                 }
             } else {
@@ -153,7 +154,7 @@ public class MockPaymentService implements PaymentService {
                 history.setTenantId(order.getTenantId());
                 history.setOrderId(order.getId());
                 history.setFromStatus(OrderStatus.PENDING_PAYMENT.name());
-                history.setToStatus(OrderStatus.PAID.name());
+                history.setToStatus(OrderStatus.PENDING_MERCHANT_CONFIRMATION.name());
                 history.setRemark("模拟扫码付款成功，流水号=" + transaction.getOutTradeNo());
                 historyMapper.insert(history);
             }
@@ -197,7 +198,7 @@ public class MockPaymentService implements PaymentService {
         result.setOrderNo(order.getOrderNo());
         result.setAmountCent(transaction.getAmountCent());
         result.setStatus(transaction.getStatus());
-        result.setPaid("SUCCESS".equals(transaction.getStatus()) || OrderStatus.PAID.name().equals(order.getStatus()));
+        result.setPaid("SUCCESS".equals(transaction.getStatus()));
         result.setExpiresAt(transaction.getExpiresAt());
         return result;
     }

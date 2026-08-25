@@ -183,18 +183,28 @@ sequenceDiagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> CREATED
-    CREATED --> CONFIRMED: 确认订单
-    CREATED --> CANCELLED: 取消/超时自动取消
-    CONFIRMED --> SHIPPED: 发货
-    CONFIRMED --> CANCELLED: 取消
+    [*] --> PENDING_PAYMENT
+    PENDING_PAYMENT --> PENDING_MERCHANT_CONFIRMATION: 付款成功
+    PENDING_PAYMENT --> CANCELLED: 顾客取消/超时未付款
+    PENDING_MERCHANT_CONFIRMATION --> PENDING_SHIPMENT: 商家确认
+    PENDING_SHIPMENT --> SHIPPED: 商家发货
     SHIPPED --> COMPLETED: 完成
-    COMPLETED --> REFUNDING: 申请退款
-    REFUNDING --> REFUNDED: 退款通过
-    REFUNDING --> COMPLETED: 退款驳回
+    PENDING_MERCHANT_CONFIRMATION --> REFUNDED: 仅退款完成
+    PENDING_SHIPMENT --> REFUNDED: 仅退款完成
+    COMPLETED --> REFUNDED: 退货退款完成
     CANCELLED --> [*]
     COMPLETED --> [*]
     REFUNDED --> [*]
+```
+
+退款审核、顾客寄回、商家收货不属于订单主状态，而是独立售后单状态：
+
+```text
+仅退款：待审核 → 退款处理中 → 已退款
+                  └→ 已驳回
+
+退货退款：待审核 → 待顾客寄回 → 待商家收货 → 退款处理中 → 已退款
+                  └→ 已驳回
 ```
 
 ### 4.3 平台新增租户（让商家进驻商城）

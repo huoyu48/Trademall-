@@ -13,6 +13,12 @@ public interface RefundService {
 
     Refund reject(Long refundId);
 
+    Refund submitReturnLogisticsByCustomer(Long refundId, Long customerId, String logisticsCompany, String trackingNo);
+
+    Refund confirmReturnReceived(Long refundId);
+
+    Refund completeRefund(Long refundId);
+
     Refund detail(Long refundId);
 
     PageResult<Refund> page(int page, int size);

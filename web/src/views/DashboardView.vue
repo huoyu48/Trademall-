@@ -138,8 +138,8 @@ const trends = reactive<{
 
 const STATUS_COLOR: Record<string, string> = {
   PENDING_PAYMENT: '#f59e0b',
-  PAID: '#6366f1',
-  CREATED: '#3b82f6',
+  PENDING_MERCHANT_CONFIRMATION: '#6366f1',
+  PENDING_SHIPMENT: '#f59e0b',
   SHIPPED: '#0ea5e9',
   COMPLETED: '#10b981',
   CANCELLED: '#ef4444'
@@ -165,7 +165,7 @@ function level(q: number): string {
 
 function goPendingOrders() {
   // 仪表盘的“待处理”与统计口径一致：仅指刚创建、尚未由商家确认的订单。
-  router.push({ path: '/orders', query: { status: 'PAID' } })
+  router.push({ path: '/orders', query: { status: 'PENDING_MERCHANT_CONFIRMATION' } })
 }
 
 function goLowStock() {

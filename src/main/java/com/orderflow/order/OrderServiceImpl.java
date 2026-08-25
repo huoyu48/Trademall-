@@ -17,6 +17,7 @@ import com.orderflow.domain.entity.Product;
 import com.orderflow.domain.entity.Promotion;
 import com.orderflow.domain.entity.Store;
 import com.orderflow.domain.mapper.PromotionMapper;
+import com.orderflow.domain.mapper.RefundMapper;
 import com.orderflow.domain.mapper.InventoryMapper;
 import com.orderflow.domain.mapper.OrderItemMapper;
 import com.orderflow.domain.mapper.OrderStatusHistoryMapper;
@@ -64,6 +65,7 @@ public class OrderServiceImpl implements OrderService {
     private final PromotionMapper promotionMapper;
     private final StoreMapper storeMapper;
     private final PaymentTransactionMapper paymentMapper;
+    private final RefundMapper refundMapper;
 
     @Value("${orderflow.inventory.low-stock-threshold:10}")
     private int lowStockThreshold;
@@ -73,7 +75,8 @@ public class OrderServiceImpl implements OrderService {
                             InventoryMapper inventoryMapper, AuditLogService auditLogService,
                             OutboxEventService outboxEventService, RedisLockService redisLock,
                             RabbitTemplate rabbitTemplate, PromotionMapper promotionMapper,
-                            StoreMapper storeMapper, PaymentTransactionMapper paymentMapper) {
+                            StoreMapper storeMapper, PaymentTransactionMapper paymentMapper,
+                            RefundMapper refundMapper) {
         this.ordersMapper = ordersMapper;
         this.orderItemMapper = orderItemMapper;
         this.historyMapper = historyMapper;
@@ -86,6 +89,7 @@ public class OrderServiceImpl implements OrderService {
         this.promotionMapper = promotionMapper;
         this.storeMapper = storeMapper;
         this.paymentMapper = paymentMapper;
+        this.refundMapper = refundMapper;
     }
 
     @Override
@@ -112,7 +116,7 @@ public class OrderServiceImpl implements OrderService {
         boolean crossTenant = explicitTenantId != null && !explicitTenantId.equals(TenantContext.getTenantId());
         if (crossTenant) TenantContext.setIgnoreTenant(true);
         try {
-            // 顾客接口会传 explicitTenantId，因此进入待付款；商家后台手工建单保留历史“已创建”流程。
+            // 顾客接口会传 explicitTenantId，因此进入待付款；后台录入订单视作已收款，直接等待商家处理。
             return doCreate(request, idempotencyKey, tenantId, explicitTenantId != null);
         } finally {
             if (crossTenant) TenantContext.setIgnoreTenant(false);
@@ -289,7 +293,7 @@ public class OrderServiceImpl implements OrderService {
         order.setCustomerId(request.getCustomerId());
         order.setStoreId(storeId);
         order.setStoreNameSnapshot(storeNameSnapshot);
-        OrderStatus initialStatus = pendingPayment ? OrderStatus.PENDING_PAYMENT : OrderStatus.CREATED;
+        OrderStatus initialStatus = pendingPayment ? OrderStatus.PENDING_PAYMENT : OrderStatus.PENDING_MERCHANT_CONFIRMATION;
         order.setStatus(initialStatus.name());
         order.setPromoCode(appliedPromo);
         order.setDiscountAmountCent(discount > 0 ? discount : null);
@@ -323,7 +327,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         insertHistory(order.getId(), tenantId, null, initialStatus.name(),
-                pendingPayment ? "提交订单，等待付款" : "创建订单");
+                pendingPayment ? "提交订单，等待付款" : "后台录入订单，等待商家确认");
         auditLogService.write("CREATE_ORDER", "order", String.valueOf(order.getId()),
                 null, "orderNo=" + order.getOrderNo());
 
@@ -429,25 +433,25 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderDTO confirm(Long orderId) {
-        return transit(orderId, OrderStatus.CONFIRMED, "CONFIRM_ORDER", false);
+        return transit(orderId, OrderStatus.PENDING_SHIPMENT, "CONFIRM_ORDER", false, false);
     }
 
     @Override
     @Transactional
     public OrderDTO ship(Long orderId) {
-        return transit(orderId, OrderStatus.SHIPPED, "SHIP_ORDER", false);
+        return transit(orderId, OrderStatus.SHIPPED, "SHIP_ORDER", false, true);
     }
 
     @Override
     @Transactional
     public OrderDTO complete(Long orderId) {
-        return transit(orderId, OrderStatus.COMPLETED, "COMPLETE_ORDER", false);
+        return transit(orderId, OrderStatus.COMPLETED, "COMPLETE_ORDER", false, false);
     }
 
     @Override
     @Transactional
     public OrderDTO cancel(Long orderId) {
-        return transit(orderId, OrderStatus.CANCELLED, "CANCEL_ORDER", true);
+        return transit(orderId, OrderStatus.CANCELLED, "CANCEL_ORDER", true, false);
     }
 
     @Override
@@ -470,7 +474,7 @@ public class OrderServiceImpl implements OrderService {
             // 复用状态机和库存回补链路，但以订单所属商家租户执行，避免跨租户订单被拦截。
             TenantContext.set(order.getTenantId(), customerId, previousUsername);
             TenantContext.setIgnoreTenant(false);
-            return transit(orderId, OrderStatus.CANCELLED, "CUSTOMER_CANCEL_PENDING_PAYMENT", true);
+            return transit(orderId, OrderStatus.CANCELLED, "CUSTOMER_CANCEL_PENDING_PAYMENT", true, false);
         } finally {
             TenantContext.set(previousTenantId, previousUserId, previousUsername);
             TenantContext.setIgnoreTenant(previousIgnore);
@@ -479,24 +483,12 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public OrderDTO applyRefund(Long orderId) {
-        return transit(orderId, OrderStatus.REFUNDING, "APPLY_REFUND", false);
-    }
-
-    @Override
-    @Transactional
-    public OrderDTO finishRefund(Long orderId) {
+    public OrderDTO markRefunded(Long orderId) {
         Orders order = requireOrder(orderId);
-        // 未发货退款才释放此前预占的库存；已发货订单应在退货入库后另行回补。
-        boolean releaseInventory = OrderStatus.PAID.name().equals(order.getStatus())
-                || OrderStatus.CONFIRMED.name().equals(order.getStatus());
-        return transit(orderId, OrderStatus.REFUNDED, "FINISH_REFUND", releaseInventory);
-    }
-
-    @Override
-    @Transactional
-    public OrderDTO closeRefund(Long orderId, OrderStatus originalStatus) {
-        return transit(orderId, originalStatus, "REJECT_REFUND", false);
+        // 未发货的仅退款释放预占库存；已完成退货订单已在商家收货时重新入库。
+        boolean releaseInventory = OrderStatus.PENDING_MERCHANT_CONFIRMATION.name().equals(order.getStatus())
+                || OrderStatus.PENDING_SHIPMENT.name().equals(order.getStatus());
+        return transit(orderId, OrderStatus.REFUNDED, "REFUND_COMPLETED", releaseInventory, false);
     }
 
     @Override
@@ -536,7 +528,7 @@ public class OrderServiceImpl implements OrderService {
             long cnt = ((Number) m.get("cnt")).longValue();
             dist.add(new OrderStatsDTO.StatusCount(status, cnt));
             total += cnt;
-            if ("PAID".equals(status)) pending = cnt;
+            if ("PENDING_MERCHANT_CONFIRMATION".equals(status)) pending = cnt;
             if ("COMPLETED".equals(status)) completed = cnt;
         }
         dto.setStatusDistribution(dist);
@@ -557,7 +549,7 @@ public class OrderServiceImpl implements OrderService {
         return dto;
     }
 
-    private OrderDTO transit(Long orderId, OrderStatus target, String action, boolean releaseInventory) {
+    private OrderDTO transit(Long orderId, OrderStatus target, String action, boolean releaseInventory, boolean commitShipment) {
         Long tenantId = TenantContext.getTenantId();
         Orders order = requireOrder(orderId);
         OrderStatus current = OrderStatus.valueOf(order.getStatus());
@@ -575,6 +567,16 @@ public class OrderServiceImpl implements OrderService {
                     new QueryWrapper<OrderItem>().eq("order_id", orderId));
             for (OrderItem oi : items) {
                 inventoryMapper.release(tenantId, oi.getProductId(), oi.getQuantity());
+            }
+        }
+
+        if (commitShipment) {
+            List<OrderItem> items = orderItemMapper.selectList(
+                    new QueryWrapper<OrderItem>().eq("order_id", orderId));
+            for (OrderItem oi : items) {
+                if (inventoryMapper.commitShipment(tenantId, oi.getProductId(), oi.getQuantity()) != 1) {
+                    throw new BizException(BizErrorCode.INSUFFICIENT_INVENTORY);
+                }
             }
         }
 
@@ -622,6 +624,13 @@ public class OrderServiceImpl implements OrderService {
         dto.setPromoCode(order.getPromoCode());
         dto.setDiscountAmountCent(order.getDiscountAmountCent());
         dto.setCreatedAt(order.getCreatedAt());
+
+        var latestAfterSale = refundMapper.findLatestByOrderId(order.getId());
+        if (latestAfterSale != null) {
+            dto.setAfterSalesId(latestAfterSale.getId());
+            dto.setAfterSalesStatus(latestAfterSale.getStatus());
+            dto.setAfterSalesType(latestAfterSale.getRefundType());
+        }
 
         PaymentTransaction payment = paymentMapper.findLatestByOrderId(order.getId());
         if (payment != null) {

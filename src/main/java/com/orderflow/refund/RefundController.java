@@ -33,6 +33,16 @@ public class RefundController {
         return ApiResponse.success(service.reject(id));
     }
 
+    @PostMapping("/{id}/receive-return")
+    public ApiResponse<Refund> receiveReturn(@PathVariable Long id) {
+        return ApiResponse.success(service.confirmReturnReceived(id));
+    }
+
+    @PostMapping("/{id}/complete-refund")
+    public ApiResponse<Refund> completeRefund(@PathVariable Long id) {
+        return ApiResponse.success(service.completeRefund(id));
+    }
+
     @GetMapping("/{id}")
     public ApiResponse<Refund> detail(@PathVariable Long id) {
         return ApiResponse.success(service.detail(id));

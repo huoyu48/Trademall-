@@ -20,9 +20,13 @@ public class Refund {
     private String orderNo;
     private String reason;
     private Long refundAmountCent;
+    /** REFUND_ONLY=仅退款，RETURN_AND_REFUND=退货退款。 */
+    private String refundType;
     private String status;
-    /** 退款驳回时用于把订单恢复到申请前状态。 */
-    private String originalOrderStatus;
+    private String returnLogisticsCompany;
+    private String returnTrackingNo;
+    private LocalDateTime returnShippedAt;
+    private LocalDateTime merchantReceivedAt;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE)

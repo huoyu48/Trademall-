@@ -18,6 +18,10 @@ public class OrderDTO {
     private String promoCode;
     private Long discountAmountCent;
     private LocalDateTime createdAt;
+    /** 售后单独建模，订单保持履约状态；这里只返回最新售后摘要供列表展示。 */
+    private Long afterSalesId;
+    private String afterSalesStatus;
+    private String afterSalesType;
     /** 商家可见的安全支付摘要；不返回付款码、回调原文等敏感字段。 */
     private PaymentInfoDTO payment;
     private List<OrderItemDTO> items;

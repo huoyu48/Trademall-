@@ -1,6 +1,6 @@
 <template>
   <div>
-    <PageHeader title="退款售后" subtitle="处理已付款订单的模拟退款；确认后订单进入已退款，未发货订单释放预占库存">
+    <PageHeader title="退款售后" subtitle="仅退款直接处理；退货退款需经过审核、顾客寄回、商家收货和退款四步">
       <template #actions>
         <el-button type="primary" @click="openApply">+ 发起退款</el-button>
       </template>
@@ -12,6 +12,15 @@
         <el-table-column prop="refundNo" label="退款单号" width="180" />
         <el-table-column prop="orderNo" label="关联订单" width="180" />
         <el-table-column prop="reason" label="退款原因" show-overflow-tooltip />
+        <el-table-column label="售后类型" width="120">
+          <template #default="{ row }">{{ typeMeta[row.refundType]?.label || row.refundType }}</template>
+        </el-table-column>
+        <el-table-column label="退货物流" min-width="180">
+          <template #default="{ row }">
+            <span v-if="row.returnTrackingNo">{{ row.returnLogisticsCompany }} / {{ row.returnTrackingNo }}</span>
+            <span v-else>—</span>
+          </template>
+        </el-table-column>
         <el-table-column label="退款金额" width="120">
           <template #default="{ row }">
             <span class="amount">¥{{ centToYuan(row.refundAmountCent) }}</span>
@@ -22,12 +31,14 @@
             <el-tag :type="statusMeta[row.status]?.type || 'info'">{{ statusMeta[row.status]?.label }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="160">
+        <el-table-column label="操作" width="220">
           <template #default="{ row }">
-            <template v-if="row.status === 'PENDING'">
-              <el-button link type="success" @click="approve(row)">确认模拟退款</el-button>
+            <template v-if="row.status === 'PENDING_REVIEW'">
+              <el-button link type="success" @click="approve(row)">{{ row.refundType === 'RETURN_AND_REFUND' ? '同意退货' : '同意退款' }}</el-button>
               <el-button link type="danger" @click="reject(row)">驳回</el-button>
             </template>
+            <el-button v-else-if="row.status === 'WAITING_MERCHANT_RECEIPT'" link type="warning" @click="receive(row)">确认收到退货</el-button>
+            <el-button v-else-if="row.status === 'REFUNDING'" link type="success" @click="complete(row)">确认退款完成</el-button>
             <el-button v-else link type="primary" @click="detail(row)">详情</el-button>
           </template>
         </el-table-column>
@@ -56,7 +67,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { pageRefunds, applyRefund, approveRefund, rejectRefund } from '../api/refund'
+import { pageRefunds, applyRefund, approveRefund, rejectRefund, confirmReturnReceived, completeRefund } from '../api/refund'
 import { centToYuan } from '../utils/money'
 import PageHeader from '../components/PageHeader.vue'
 
@@ -70,10 +81,17 @@ const applyOrderId = ref<number | undefined>(undefined)
 const applyReason = ref('')
 
 const statusMeta: Record<string, { label: string; type: string }> = {
-  PENDING: { label: '待审核', type: 'warning' },
-  APPROVED: { label: '已通过', type: 'success' },
+  PENDING_REVIEW: { label: '待审核', type: 'warning' },
+  WAITING_CUSTOMER_RETURN: { label: '待顾客寄回', type: 'warning' },
+  WAITING_MERCHANT_RECEIPT: { label: '待商家收货', type: 'primary' },
+  REFUNDING: { label: '退款处理中', type: 'warning' },
   REJECTED: { label: '已驳回', type: 'danger' },
   REFUNDED: { label: '已退款', type: 'success' }
+}
+
+const typeMeta: Record<string, { label: string }> = {
+  REFUND_ONLY: { label: '仅退款' },
+  RETURN_AND_REFUND: { label: '退货退款' }
 }
 
 async function load(p = q.page) {
@@ -105,9 +123,24 @@ async function doApply() {
   }
 }
 async function approve(row: any) {
-  await ElMessageBox.confirm(`确认完成模拟退款单 ${row.refundNo}？`, '提示', { type: 'warning' })
+  const content = row.refundType === 'RETURN_AND_REFUND'
+    ? `同意后顾客需要填写退货物流。确认同意售后单 ${row.refundNo} 吗？`
+    : `同意后售后单将进入退款处理中。确认同意售后单 ${row.refundNo} 吗？`
+  await ElMessageBox.confirm(content, '处理售后', { type: 'warning' })
   await approveRefund(row.id)
-  ElMessage.success('模拟退款已完成')
+  ElMessage.success(row.refundType === 'RETURN_AND_REFUND' ? '已同意退货，等待顾客寄回' : '已进入退款处理')
+  load()
+}
+async function receive(row: any) {
+  await ElMessageBox.confirm(`确认已收到退货单 ${row.refundNo} 的商品？商品将重新入库。`, '确认收货', { type: 'warning' })
+  await confirmReturnReceived(row.id)
+  ElMessage.success('已确认收货，售后单进入退款处理')
+  load()
+}
+async function complete(row: any) {
+  await ElMessageBox.confirm(`确认完成退款单 ${row.refundNo}？订单将变为已退款。`, '确认退款', { type: 'warning' })
+  await completeRefund(row.id)
+  ElMessage.success('退款已完成')
   load()
 }
 async function reject(row: any) {

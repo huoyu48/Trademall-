@@ -24,8 +24,9 @@
             <span class="order-time">{{ formatTime(o.createdAt) }}</span>
             <span class="order-store"><el-icon><Shop /></el-icon>{{ o.storeName || '商家店铺' }}</span>
             <span v-if="o.status === 'PENDING_PAYMENT'" class="payment-timeout-tip">
-  请在 30 分钟内完成付款，超时订单将自动取消
+              请在 30 分钟内完成付款，超时订单将自动取消
             </span>
+            <span v-if="o.afterSalesStatus" class="after-sales-status">售后：{{ afterSalesLabel(o.afterSalesStatus) }}</span>
           </div>
           <div class="oh-right">
             <el-icon :size="18" :color="statusMap[o.status]?.color" class="oh-icon">
@@ -53,8 +54,10 @@
                      @click.stop="pay(o)">模拟付款</el-button>
           <el-button v-if="o.status === 'PENDING_PAYMENT'" type="danger" plain size="small" :loading="cancellingOrderId === o.id"
                      @click.stop="cancelOrder(o)">取消订单</el-button>
-          <el-button v-if="canApplyRefund(o.status)" type="warning" plain size="small" :loading="refundingOrderId === o.id"
-                     @click.stop="openRefund(o)">申请退款</el-button>
+          <el-button v-if="canApplyAfterSales(o)" type="warning" plain size="small" :loading="refundingOrderId === o.id"
+                    @click.stop="openRefund(o)">申请退款</el-button>
+          <el-button v-if="canSubmitReturn(o)" type="warning" size="small" class="return-logistics-btn"
+                     @click.stop="openReturnLogistics(o)">填写退货物流</el-button>
           <el-button class="contact-merchant-btn" size="small" @click.stop="contactMerchant(o)">
             <el-icon><ChatDotRound /></el-icon> 联系商家
           </el-button>
@@ -71,13 +74,25 @@
       </div>
     </el-dialog>
 
-    <el-dialog v-model="refundDialogVisible" title="申请退款" width="420px" align-center>
-      <el-alert type="warning" :closable="false" show-icon title="提交后订单将进入退款中，等待商家确认模拟退款。" />
+    <el-dialog v-model="refundDialogVisible" :title="refundDialogTitle" width="420px" align-center>
+      <el-alert type="warning" :closable="false" show-icon :title="refundDialogHint" />
       <el-input v-model="refundReason" class="refund-reason" type="textarea" :rows="3" maxlength="120" show-word-limit
                 placeholder="请填写退款原因，例如：商品不需要了" />
       <template #footer>
         <el-button @click="refundDialogVisible = false">暂不申请</el-button>
         <el-button type="warning" :loading="refundingOrderId !== null" @click="submitRefund">提交退款申请</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="returnDialogVisible" title="填写退货物流" width="420px" align-center>
+      <el-alert type="warning" :closable="false" show-icon title="商家同意退货后，请填写真实或演示用的物流信息，商家收货后才会退款。" />
+      <el-form label-width="84px" class="return-logistics-form">
+        <el-form-item label="物流公司"><el-input v-model="returnLogisticsCompany" placeholder="例如：顺丰速运" /></el-form-item>
+        <el-form-item label="退货单号"><el-input v-model="returnTrackingNo" placeholder="请输入退货物流单号" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="returnDialogVisible = false">暂不填写</el-button>
+        <el-button type="warning" :loading="returnSubmitting" @click="submitReturnLogistics">确认提交物流</el-button>
       </template>
     </el-dialog>
   </div>
@@ -88,7 +103,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '../../components/PageHeader.vue'
-import { applyCustomerRefund, cancelPendingPaymentOrder, createMockCheckout, myOrders, paymentStatus } from '../../api/customer'
+import { applyCustomerRefund, cancelPendingPaymentOrder, createMockCheckout, myOrders, paymentStatus, submitCustomerReturnLogistics } from '../../api/customer'
 import { customerChatApi } from '../../api/chat'
 import { centToYuan } from '../../utils/money'
 import type { Order } from '../../types'
@@ -102,6 +117,11 @@ const refundingOrderId = ref<number | null>(null)
 const refundDialogVisible = ref(false)
 const refundOrder = ref<Order | null>(null)
 const refundReason = ref('')
+const returnDialogVisible = ref(false)
+const returnSubmitting = ref(false)
+const returnRefundId = ref<number | null>(null)
+const returnLogisticsCompany = ref('')
+const returnTrackingNo = ref('')
 const paymentDialogVisible = ref(false)
 const paymentQrCodeImage = ref('')
 const paymentAmount = ref('0.00')
@@ -119,40 +139,64 @@ const tabs = [
 
 const statusMap: Record<string, { label: string; color: string; icon: string }> = {
   PENDING_PAYMENT: { label: '待付款', color: '#f59e0b', icon: 'Wallet' },
-  PAID: { label: '已付款，待商家确认', color: '#6366f1', icon: 'CircleCheck' },
-  CREATED: { label: '已创建', color: '#3b82f6', icon: 'Document' },
-  CONFIRMED: { label: '已确认', color: '#f59e0b', icon: 'CircleCheck' },
+  PENDING_MERCHANT_CONFIRMATION: { label: '待商家确认', color: '#6366f1', icon: 'CircleCheck' },
+  PENDING_SHIPMENT: { label: '待发货', color: '#f59e0b', icon: 'Box' },
   SHIPPED: { label: '已发货', color: '#8b5cf6', icon: 'Van' },
   COMPLETED: { label: '已完成', color: '#10b981', icon: 'CircleCheck' },
   CANCELLED: { label: '已取消', color: '#9ca3af', icon: 'CircleClose' },
-  REFUNDING: { label: '退款中', color: '#f59e0b', icon: 'Refresh' },
   REFUNDED: { label: '已退款', color: '#6b7280', icon: 'Money' }
 }
 
+const afterSalesMap: Record<string, string> = {
+  PENDING_REVIEW: '待商家审核',
+  WAITING_CUSTOMER_RETURN: '待寄回',
+  WAITING_MERCHANT_RECEIPT: '待商家收货',
+  REFUNDING: '退款处理中',
+  REFUNDED: '已退款',
+  REJECTED: '已驳回'
+}
+
 const GROUP: Record<string, string> = {
-  PENDING_PAYMENT: 'progress', PAID: 'progress', CREATED: 'progress', CONFIRMED: 'progress', SHIPPED: 'progress',
+  PENDING_PAYMENT: 'progress', PENDING_MERCHANT_CONFIRMATION: 'progress', PENDING_SHIPMENT: 'progress', SHIPPED: 'progress',
   COMPLETED: 'completed',
-  REFUNDING: 'refund', REFUNDED: 'refund',
+  REFUNDED: 'refund',
   CANCELLED: 'cancelled'
 }
 
 const filtered = computed(() => {
   if (activeTab.value === 'all') return orders.value
-  return orders.value.filter((o) => GROUP[o.status] === activeTab.value)
+  if (activeTab.value === 'refund') return orders.value.filter((o) => o.afterSalesStatus || o.status === 'REFUNDED')
+  return orders.value.filter((o) => GROUP[o.status] === activeTab.value && !o.afterSalesStatus)
 })
 
 function countBy(key: string) {
   if (key === 'all') return orders.value.length
-  return orders.value.filter((o) => GROUP[o.status] === key).length
+  if (key === 'refund') return orders.value.filter((o) => o.afterSalesStatus || o.status === 'REFUNDED').length
+  return orders.value.filter((o) => GROUP[o.status] === key && !o.afterSalesStatus).length
 }
 
 function itemCount(o: Order) {
   return o.items.reduce((n, it) => n + it.quantity, 0)
 }
 
-function canApplyRefund(status: string) {
-  return ['PAID', 'CONFIRMED', 'SHIPPED', 'COMPLETED'].includes(status)
+function canApplyAfterSales(order: Order) {
+  const active = ['PENDING_REVIEW', 'WAITING_CUSTOMER_RETURN', 'WAITING_MERCHANT_RECEIPT', 'REFUNDING']
+  return ['PENDING_MERCHANT_CONFIRMATION', 'PENDING_SHIPMENT', 'COMPLETED'].includes(order.status)
+    && !active.includes(order.afterSalesStatus || '')
 }
+
+function canSubmitReturn(order: Order) {
+  return order.afterSalesStatus === 'WAITING_CUSTOMER_RETURN'
+}
+
+function afterSalesLabel(status: string) {
+  return afterSalesMap[status] || status
+}
+
+const refundDialogTitle = computed(() => refundOrder.value?.status === 'COMPLETED' ? '申请退货退款' : '申请仅退款')
+const refundDialogHint = computed(() => refundOrder.value?.status === 'COMPLETED'
+  ? '提交后等待商家审核；同意后需填写退货物流，商家收货后才会退款。'
+  : '提交后等待商家审核；商家同意后进入退款处理。')
 
 function formatTime(t?: string) {
   if (!t) return ''
@@ -216,11 +260,34 @@ async function submitRefund() {
   refundingOrderId.value = order.id
   try {
     await applyCustomerRefund(order.id, refundReason.value)
-    ElMessage.success('退款申请已提交，等待商家确认')
+    ElMessage.success(order.status === 'COMPLETED' ? '退货退款申请已提交，等待商家审核' : '退款申请已提交，等待商家审核')
     refundDialogVisible.value = false
     await loadOrders()
   } finally {
     refundingOrderId.value = null
+  }
+}
+
+function openReturnLogistics(order: Order) {
+  returnRefundId.value = order.afterSalesId || null
+  returnLogisticsCompany.value = ''
+  returnTrackingNo.value = ''
+  returnDialogVisible.value = true
+}
+
+async function submitReturnLogistics() {
+  if (!returnRefundId.value || !returnLogisticsCompany.value.trim() || !returnTrackingNo.value.trim()) {
+    ElMessage.warning('请填写物流公司和退货单号')
+    return
+  }
+  returnSubmitting.value = true
+  try {
+    await submitCustomerReturnLogistics(returnRefundId.value, returnLogisticsCompany.value, returnTrackingNo.value)
+    ElMessage.success('退货物流已提交，等待商家收货')
+    returnDialogVisible.value = false
+    await loadOrders()
+  } finally {
+    returnSubmitting.value = false
   }
 }
 
@@ -322,4 +389,7 @@ onUnmounted(stopPaymentPolling)
 .payment-amount { color: #ef4444; font-size: 20px; font-weight: 700; margin: 8px 0; }
 .payment-hint { color: var(--of-text-3); font-size: 12px; line-height: 1.6; }
 .refund-reason { margin-top: 16px; }
+.after-sales-status { font-size: 12px; color: #d97706; }
+.return-logistics-form { margin-top: 16px; }
+.return-logistics-btn { color: #fff !important; background: #f59e0b !important; border-color: #f59e0b !important; }
 </style>

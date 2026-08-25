@@ -329,9 +329,8 @@ public class DemoDataInitializer implements CommandLineRunner {
         List<OrderScenario> scenarios = new ArrayList<>();
         for (int i = 0; i < 6; i++) scenarios.add(new OrderScenario("COMPLETED", false));
         for (int i = 0; i < 4; i++) scenarios.add(new OrderScenario("SHIPPED", false));
-        for (int i = 0; i < 3; i++) scenarios.add(new OrderScenario("CONFIRMED", false));
-        for (int i = 0; i < 2; i++) scenarios.add(new OrderScenario("CREATED", false));
-        for (int i = 0; i < 2; i++) scenarios.add(new OrderScenario("CANCELLED", false));
+        for (int i = 0; i < 3; i++) scenarios.add(new OrderScenario("PENDING_SHIPMENT", false));
+        for (int i = 0; i < 2; i++) scenarios.add(new OrderScenario("PENDING_MERCHANT_CONFIRMATION", false));
         for (int i = 0; i < 2; i++) scenarios.add(new OrderScenario("REFUNDING", false));
         for (int i = 0; i < 5; i++) scenarios.add(new OrderScenario("REFUNDED", true));
 
@@ -365,21 +364,19 @@ public class DemoDataInitializer implements CommandLineRunner {
             Long orderId = orderService.create(req, idem).getId();
 
             switch (sc.status) {
-                case "CONFIRMED" -> orderService.confirm(orderId);
+                case "PENDING_SHIPMENT" -> orderService.confirm(orderId);
                 case "SHIPPED" -> { orderService.confirm(orderId); orderService.ship(orderId); }
                 case "COMPLETED" -> { orderService.confirm(orderId); orderService.ship(orderId); orderService.complete(orderId); }
-                case "CANCELLED" -> { orderService.confirm(orderId); orderService.cancel(orderId); }
-                case "REFUNDING" -> { orderService.confirm(orderId); orderService.ship(orderId); refundService.apply(orderId, "演示退款：收到货后发现外观瑕疵，申请退款"); }
-                case "REFUNDED" -> { orderService.confirm(orderId); orderService.ship(orderId); var rf = refundService.apply(orderId, "演示退款：七天无理由退货"); refundService.approve(rf.getId()); }
-                default -> { /* CREATED 保持待支付 */ }
+                case "REFUNDING" -> { var rf = refundService.apply(orderId, "演示仅退款：商家暂时无法发货"); refundService.approve(rf.getId()); }
+                case "REFUNDED" -> { var rf = refundService.apply(orderId, "演示仅退款：商家暂时无法发货"); refundService.approve(rf.getId()); refundService.completeRefund(rf.getId()); }
+                default -> { /* PENDING_MERCHANT_CONFIRMATION 保持待商家确认 */ }
             }
 
-            // 回写创建时间：按状态铺开到合理的业务时点（待支付/已确认多为当天，已完成/已退款偏历史）
+            // 回写创建时间：按状态铺开到合理的业务时点（待商家确认多为当天，已完成或退款偏历史）
             int dayOffset = switch (sc.status) {
-                case "CREATED" -> 0;
-                case "CONFIRMED" -> rnd.nextInt(2);
+                case "PENDING_MERCHANT_CONFIRMATION" -> 0;
+                case "PENDING_SHIPMENT" -> rnd.nextInt(2);
                 case "SHIPPED" -> 1 + rnd.nextInt(3);
-                case "CANCELLED" -> 2 + rnd.nextInt(13);
                 case "REFUNDING" -> 3 + rnd.nextInt(8);
                 case "REFUNDED" -> 8 + rnd.nextInt(21);
                 default -> 5 + rnd.nextInt(24); // COMPLETED
@@ -391,7 +388,7 @@ public class DemoDataInitializer implements CommandLineRunner {
 
             idx++;
         }
-        log.info("已通过真实业务流创建 {} 笔历史订单（覆盖 7 种状态，约 40% 使用促销，部分走退款流程）", n);
+        log.info("已通过真实业务流创建 {} 笔历史订单（覆盖订单履约与售后退款场景，约 40% 使用促销）", n);
     }
 
     private long priceOf(Map<String, Long> prodIds, OrderItemSpec it) {

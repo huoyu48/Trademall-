@@ -92,6 +92,10 @@ export function applyCustomerRefund(id: number, reason?: string) {
   return http.post<any>(`/customer/orders/${id}/refunds`, undefined, { params: { reason } })
 }
 
+export function submitCustomerReturnLogistics(id: number, logisticsCompany: string, trackingNo: string) {
+  return http.post<any>(`/customer/refunds/${id}/return-logistics`, undefined, { params: { logisticsCompany, trackingNo } })
+}
+
 export function myOrders() {
   return http.get<Order[]>('/customer/orders')
 }

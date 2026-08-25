@@ -6,7 +6,10 @@ import com.orderflow.common.BizErrorCode;
 import com.orderflow.common.BizException;
 import com.orderflow.common.PageResult;
 import com.orderflow.domain.entity.Orders;
+import com.orderflow.domain.entity.OrderItem;
 import com.orderflow.domain.entity.Refund;
+import com.orderflow.domain.mapper.InventoryMapper;
+import com.orderflow.domain.mapper.OrderItemMapper;
 import com.orderflow.domain.mapper.OrdersMapper;
 import com.orderflow.domain.mapper.PaymentTransactionMapper;
 import com.orderflow.domain.mapper.RefundMapper;
@@ -27,13 +30,18 @@ public class RefundServiceImpl implements RefundService {
     private final OrdersMapper ordersMapper;
     private final OrderService orderService;
     private final PaymentTransactionMapper paymentMapper;
+    private final OrderItemMapper orderItemMapper;
+    private final InventoryMapper inventoryMapper;
 
     public RefundServiceImpl(RefundMapper refundMapper, OrdersMapper ordersMapper, OrderService orderService,
-                             PaymentTransactionMapper paymentMapper) {
+                             PaymentTransactionMapper paymentMapper, OrderItemMapper orderItemMapper,
+                             InventoryMapper inventoryMapper) {
         this.refundMapper = refundMapper;
         this.ordersMapper = ordersMapper;
         this.orderService = orderService;
         this.paymentMapper = paymentMapper;
+        this.orderItemMapper = orderItemMapper;
+        this.inventoryMapper = inventoryMapper;
     }
 
     @Override
@@ -45,8 +53,18 @@ public class RefundServiceImpl implements RefundService {
             throw new BizException(BizErrorCode.ORDER_NOT_IN_TENANT);
         }
         OrderStatus current = OrderStatus.valueOf(order.getStatus());
-        if (current != OrderStatus.PAID && current != OrderStatus.CONFIRMED
-                && current != OrderStatus.SHIPPED && current != OrderStatus.COMPLETED) {
+        Refund latest = refundMapper.findLatestByOrderId(orderId);
+        if (latest != null && !RefundStatus.REJECTED.name().equals(latest.getStatus())
+                && !RefundStatus.REFUNDED.name().equals(latest.getStatus())) {
+            throw new BizException(40914, "该订单已有处理中售后申请");
+        }
+
+        RefundType type;
+        if (current == OrderStatus.PENDING_MERCHANT_CONFIRMATION || current == OrderStatus.PENDING_SHIPMENT) {
+            type = RefundType.REFUND_ONLY;
+        } else if (current == OrderStatus.COMPLETED) {
+            type = RefundType.RETURN_AND_REFUND;
+        } else {
             throw new BizException(BizErrorCode.INVALID_ORDER_STATUS_TRANSITION);
         }
         Refund r = new Refund();
@@ -56,10 +74,9 @@ public class RefundServiceImpl implements RefundService {
         r.setOrderNo(order.getOrderNo());
         r.setReason(reason);
         r.setRefundAmountCent(order.getTotalAmountCent());
-        r.setStatus("PENDING");
-        r.setOriginalOrderStatus(current.name());
+        r.setRefundType(type.name());
+        r.setStatus(RefundStatus.PENDING_REVIEW.name());
         refundMapper.insert(r);
-        orderService.applyRefund(orderId);
         return r;
     }
 
@@ -93,13 +110,9 @@ public class RefundServiceImpl implements RefundService {
     public Refund approve(Long refundId) {
         Long tenantId = TenantContext.getTenantId();
         Refund r = require(refundId, tenantId);
-        if (!"PENDING".equals(r.getStatus())) {
-            throw new BizException(BizErrorCode.INVALID_ORDER_STATUS_TRANSITION);
-        }
-        r.setStatus("REFUNDED");
-        refundMapper.updateById(r);
-        orderService.finishRefund(r.getOrderId());
-        paymentMapper.markRefundedByOrderId(r.getOrderId());
+        RefundStatus target = RefundType.RETURN_AND_REFUND.name().equals(r.getRefundType())
+                ? RefundStatus.WAITING_CUSTOMER_RETURN : RefundStatus.REFUNDING;
+        transition(r, tenantId, target);
         return r;
     }
 
@@ -108,14 +121,71 @@ public class RefundServiceImpl implements RefundService {
     public Refund reject(Long refundId) {
         Long tenantId = TenantContext.getTenantId();
         Refund r = require(refundId, tenantId);
-        if (!"PENDING".equals(r.getStatus())) {
-            throw new BizException(BizErrorCode.INVALID_ORDER_STATUS_TRANSITION);
+        transition(r, tenantId, RefundStatus.REJECTED);
+        return r;
+    }
+
+    @Override
+    @Transactional
+    public Refund submitReturnLogisticsByCustomer(Long refundId, Long customerId, String logisticsCompany, String trackingNo) {
+        if (isBlank(logisticsCompany) || isBlank(trackingNo)) {
+            throw new BizException(40001, "请填写物流公司和退货单号");
         }
-        r.setStatus("REJECTED");
+        Long previousTenantId = TenantContext.getTenantId();
+        Long previousUserId = TenantContext.getUserId();
+        String previousUsername = TenantContext.getUsername();
+        boolean previousIgnore = TenantContext.isIgnoreTenant();
+        try {
+            TenantContext.setIgnoreTenant(true);
+            Refund r = refundMapper.selectById(refundId);
+            if (r == null) throw new BizException(BizErrorCode.NOT_FOUND);
+            Orders order = ordersMapper.selectById(r.getOrderId());
+            if (order == null || !Objects.equals(order.getCustomerId(), customerId)) {
+                throw new BizException(BizErrorCode.ORDER_NOT_IN_TENANT);
+            }
+            TenantContext.set(order.getTenantId(), customerId, previousUsername);
+            TenantContext.setIgnoreTenant(false);
+            if (RefundType.RETURN_AND_REFUND.name().equals(r.getRefundType())
+                    && RefundStatus.WAITING_CUSTOMER_RETURN.name().equals(r.getStatus())) {
+                r.setReturnLogisticsCompany(logisticsCompany.trim());
+                r.setReturnTrackingNo(trackingNo.trim());
+                r.setReturnShippedAt(LocalDateTime.now());
+                refundMapper.updateById(r);
+                transition(r, order.getTenantId(), RefundStatus.WAITING_MERCHANT_RECEIPT);
+                return r;
+            }
+            throw new BizException(BizErrorCode.INVALID_ORDER_STATUS_TRANSITION);
+        } finally {
+            TenantContext.set(previousTenantId, previousUserId, previousUsername);
+            TenantContext.setIgnoreTenant(previousIgnore);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Refund confirmReturnReceived(Long refundId) {
+        Long tenantId = TenantContext.getTenantId();
+        Refund r = require(refundId, tenantId);
+        transition(r, tenantId, RefundStatus.REFUNDING);
+        // 已发货商品先在发货时扣减实体库存；商家确认收到退货后才重新入库。
+        for (OrderItem item : orderItemMapper.selectList(new QueryWrapper<OrderItem>().eq("order_id", r.getOrderId()))) {
+            if (inventoryMapper.restock(tenantId, item.getProductId(), item.getQuantity()) != 1) {
+                throw new BizException(50001, "退货入库失败");
+            }
+        }
+        r.setMerchantReceivedAt(LocalDateTime.now());
         refundMapper.updateById(r);
-        OrderStatus originalStatus = r.getOriginalOrderStatus() == null
-                ? OrderStatus.SHIPPED : OrderStatus.valueOf(r.getOriginalOrderStatus());
-        orderService.closeRefund(r.getOrderId(), originalStatus);
+        return r;
+    }
+
+    @Override
+    @Transactional
+    public Refund completeRefund(Long refundId) {
+        Long tenantId = TenantContext.getTenantId();
+        Refund r = require(refundId, tenantId);
+        transition(r, tenantId, RefundStatus.REFUNDED);
+        orderService.markRefunded(r.getOrderId());
+        paymentMapper.markRefundedByOrderId(r.getOrderId());
         return r;
     }
 
@@ -138,5 +208,18 @@ public class RefundServiceImpl implements RefundService {
             throw new BizException(BizErrorCode.NOT_FOUND);
         }
         return r;
+    }
+
+    private void transition(Refund refund, Long tenantId, RefundStatus target) {
+        RefundStatus current = RefundStatus.valueOf(refund.getStatus());
+        if (!RefundStatus.canTransition(current, target)
+                || refundMapper.transitionStatus(refund.getId(), tenantId, current.name(), target.name()) != 1) {
+            throw new BizException(BizErrorCode.INVALID_ORDER_STATUS_TRANSITION);
+        }
+        refund.setStatus(target.name());
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }

@@ -47,6 +47,9 @@ export interface Order {
   storeId?: number
   storeName?: string
   status: string
+  afterSalesId?: number
+  afterSalesStatus?: string
+  afterSalesType?: string
   totalAmountCent: number
   promoCode?: string
   discountAmountCent?: number

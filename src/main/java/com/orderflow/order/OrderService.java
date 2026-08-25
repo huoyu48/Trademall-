@@ -37,11 +37,8 @@ public interface OrderService {
 
     OrderStatsDTO stats();
 
-    OrderDTO applyRefund(Long orderId);
-
-    OrderDTO finishRefund(Long orderId);
-
-    OrderDTO closeRefund(Long orderId, OrderStatus originalStatus);
+    /** 售后退款完成后，将订单置为已退款；退货入库由售后服务在确认收货时完成。 */
+    OrderDTO markRefunded(Long orderId);
 
     /** 顾客端：查询某顾客在本租户下的全部订单 */
     List<OrderDTO> listByCustomer(Long customerId);

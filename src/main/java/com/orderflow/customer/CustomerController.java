@@ -137,6 +137,17 @@ public class CustomerController {
         return ApiResponse.success(refundService.applyByCustomer(id, me.getUserId(), reason));
     }
 
+    /** 顾客仅能为自己的“待寄回”售后填写退货物流。 */
+    @PostMapping("/refunds/{id}/return-logistics")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ApiResponse<Refund> submitReturnLogistics(@PathVariable Long id,
+                                                       @RequestParam String logisticsCompany,
+                                                       @RequestParam String trackingNo) {
+        LoginUser me = SecurityUtils.current();
+        return ApiResponse.success(refundService.submitReturnLogisticsByCustomer(
+                id, me.getUserId(), logisticsCompany, trackingNo));
+    }
+
     /** 我的订单：按顾客身份查全部订单（跨租户） */
     @GetMapping("/orders")
     @PreAuthorize("hasRole('CUSTOMER')")

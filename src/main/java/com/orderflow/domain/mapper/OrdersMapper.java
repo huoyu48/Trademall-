@@ -26,12 +26,12 @@ public interface OrdersMapper extends BaseMapper<Orders> {
     List<Orders> findByCustomerId(@Param("customerId") Long customerId);
 
     @InterceptorIgnore(tenantLine = "true")
-    @Select("SELECT * FROM orders WHERE status IN ('PENDING_PAYMENT', 'CREATED') AND created_at < #{cutoff}")
+    @Select("SELECT * FROM orders WHERE status = 'PENDING_PAYMENT' AND created_at < #{cutoff}")
     List<Orders> findTimedOut(@Param("cutoff") java.time.LocalDateTime cutoff);
 
     /** 条件更新保证同一订单的重复通知只会有一次真正的状态流转。 */
     @InterceptorIgnore(tenantLine = "true")
-    @Update("UPDATE orders SET status = 'PAID' WHERE id = #{orderId} AND customer_id = #{customerId} AND status = 'PENDING_PAYMENT'")
+    @Update("UPDATE orders SET status = 'PENDING_MERCHANT_CONFIRMATION' WHERE id = #{orderId} AND customer_id = #{customerId} AND status = 'PENDING_PAYMENT'")
     int markPaid(@Param("orderId") Long orderId, @Param("customerId") Long customerId);
 
     @Update("UPDATE orders SET status = #{targetStatus} WHERE id = #{orderId} AND tenant_id = #{tenantId} " +
@@ -43,16 +43,16 @@ public interface OrdersMapper extends BaseMapper<Orders> {
     List<Map<String, Object>> countByStatus(@Param("tenantId") Long tenantId);
 
     @Select("SELECT COUNT(*) FROM orders WHERE tenant_id = #{tenantId} AND DATE(created_at) = CURDATE() " +
-            "AND status IN ('PAID', 'CONFIRMED', 'SHIPPED', 'COMPLETED')")
+            "AND status IN ('PENDING_MERCHANT_CONFIRMATION', 'PENDING_SHIPMENT', 'SHIPPED', 'COMPLETED', 'REFUNDED')")
     long countTodayPaid(@Param("tenantId") Long tenantId);
 
     @Select("SELECT COALESCE(SUM(total_amount_cent), 0) FROM orders WHERE tenant_id = #{tenantId} " +
-            "AND status IN ('PAID', 'CONFIRMED', 'SHIPPED', 'COMPLETED')")
+            "AND status IN ('PENDING_MERCHANT_CONFIRMATION', 'PENDING_SHIPMENT', 'SHIPPED', 'COMPLETED', 'REFUNDED')")
     long sumCompletedSales(@Param("tenantId") Long tenantId);
 
     @Select("SELECT DATE(created_at) AS day, COUNT(*) AS cnt, COALESCE(SUM(total_amount_cent), 0) AS amount " +
             "FROM orders WHERE tenant_id = #{tenantId} AND created_at >= #{since} " +
-            "AND status IN ('PAID', 'CONFIRMED', 'SHIPPED', 'COMPLETED') " +
+            "AND status IN ('PENDING_MERCHANT_CONFIRMATION', 'PENDING_SHIPMENT', 'SHIPPED', 'COMPLETED', 'REFUNDED') " +
             "GROUP BY DATE(created_at) ORDER BY day")
     List<Map<String, Object>> dailyStats(@Param("tenantId") Long tenantId, @Param("since") java.time.LocalDateTime since);
 }
