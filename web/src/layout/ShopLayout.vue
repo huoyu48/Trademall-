@@ -14,6 +14,7 @@
             <el-menu-item index="/shop">首页</el-menu-item>
             <el-menu-item index="/shop/orders">我的订单</el-menu-item>
             <el-menu-item index="/shop/chat">咨询消息</el-menu-item>
+            <el-menu-item index="/shop/favorites">我的收藏</el-menu-item>
           </el-menu>
         </nav>
 
@@ -32,6 +33,7 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="orders"><el-icon><Tickets /></el-icon> 我的订单</el-dropdown-item>
+                <el-dropdown-item command="favorites"><el-icon><Star /></el-icon>我的收藏</el-dropdown-item>
                 <el-dropdown-item command="chat"><el-icon><ChatDotRound /></el-icon> 咨询消息</el-dropdown-item>
                 <el-dropdown-item command="logout" divided><el-icon><SwitchButton /></el-icon> 退出登录</el-dropdown-item>
               </el-dropdown-menu>
@@ -42,9 +44,9 @@
     </header>
 
     <main class="shop-main">
-      <router-view v-slot="{ Component }">
-        <transition name="of-fade" mode="out-in">
-          <component :is="Component" />
+      <router-view v-slot="{ Component, route }">
+        <transition name="of-fade">
+          <component :is="Component" :key="route.fullPath" />
         </transition>
       </router-view>
     </main>
@@ -62,19 +64,37 @@ const cart = useCartStore()
 const route = useRoute()
 const router = useRouter()
 
-const activePath = computed(() => (route.path.startsWith('/shop/orders') ? '/shop/orders' : '/shop'))
+const activePath = computed(() => {
+  if (route.path.startsWith('/shop/orders')) {
+    return '/shop/orders'
+  }
+
+  if (route.path.startsWith('/shop/favorites')) {
+    return '/shop/favorites'
+  }
+
+  if (route.path.startsWith('/shop/chat')) {
+    return '/shop/chat'
+  }
+
+  return '/shop'
+})
 const initial = computed(() => (store.username || 'C').charAt(0).toUpperCase())
 
 function onCommand(c: string) {
-  if (c === 'logout') {
-    store.logout()
-    router.replace('/login?role=customer')
-  } else if (c === 'orders') {
-    router.push('/shop/orders')
-  } else if (c === 'chat') {
-    router.push('/shop/chat')
-  }
+    if (c === 'logout') {
+        store.logout()
+        router.replace('/login?role=customer')
+    } else if (c === 'orders') {
+        router.push('/shop/orders')
+    } else if (c === 'chat') {
+        router.push('/shop/chat')
+    } else if (c === 'favorites') {
+        router.push('/shop/favorites')
+    }
 }
+
+
 </script>
 
 <style scoped>
