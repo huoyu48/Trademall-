@@ -47,6 +47,14 @@
             <el-icon style="margin-right: 6px"><ChatDotRound /></el-icon>联系商家
           </el-button>
           <el-button size="large" type="primary" class="btn-buy" @click="buyNow">立即购买</el-button>
+         <el-button size="large" class="btn-favorite" :type="favorited ? 'warning':'default'" :loading="favoriteLoading" @click="toggleFavorite">
+        <el-icon style="margin-right:6px"> <StarFilled v-if="favorited"/>
+        <Star v-else/>
+
+        </el-icon>
+        {{ favorited?'已收藏':'收藏' }}
+
+         </el-button>
         </div>
 
         <div class="pdp-specs">
@@ -85,7 +93,7 @@ import { useCartStore } from '../../stores/cart'
 import { centToYuan } from '../../utils/money'
 import { categoryStyle, formatSales } from '../../utils/product'
 import type { Product } from '../../types'
-
+import { addFavorite, favoriteStatus, removeFavorite } from '../../api/favorite'
 const route = useRoute()
 const router = useRouter()
 const cart = useCartStore()
@@ -93,6 +101,11 @@ const loading = ref(false)
 const p = ref<Product | null>(null)
 const related = ref<Product[]>([])
 
+// 收藏请求是否正在执行。
+const favoriteLoading = ref(false)
+
+// 当前商品是否已经收藏。
+const favorited = ref(false)
 function formatTime(t?: string) {
   if (!t) return '—'
   return String(t).replace('T', ' ').slice(0, 10)
@@ -115,7 +128,26 @@ async function contactMerchant() {
   const conversation = await customerChatApi.open(p.value.id)
   router.push({ path: '/shop/chat', query: { conversationId: String(conversation.id) } })
 }
+// 根据当前状态调用是否取消收藏
+async function toggleFavorite() {
+    // p保存当前商品详情
+    if (!p.value) return
+    // 请求开始前进入 loading 状态
+    favoriteLoading.value = true
+    try {
+        // 三元表达式，已收藏就删除，未收藏就调用新增
+        const result = favorited.value ? await removeFavorite(p.value.id) : await addFavorite(p.value.id)
 
+        // 以后端返回只为准
+        favorited.value = result.favorited
+        // 根据最新状态给用户反馈
+        ElMessage.success(result.favorited? '收藏成功':'已取消收藏')
+    }
+    finally {
+        // 无论成功还是失败都会执行 避免一直处于等待
+        favoriteLoading.value = false
+    }
+}
 function goToProduct(id: number) {
   // 即使目标商品 id 相同，也走 router.push 让组件实例复用时 watcher 重新触发 load
   router.push(`/shop/product/${id}`).catch(() => {
@@ -126,7 +158,10 @@ function goToProduct(id: number) {
 async function load(id: number) {
   loading.value = true
   try {
-    p.value = await productDetail(id)
+      p.value = await productDetail(id)
+      favorited.value = (
+            await favoriteStatus(id)
+        ).favorited
     const d = await fetchProducts(1, 6, p.value.categoryId)
     related.value = d.list.filter((x) => x.id !== id).slice(0, 4)
   } finally {
@@ -148,7 +183,7 @@ watch(
 .pdp { display: flex; flex-direction: column; gap: 20px; }
 .pdp-breadcrumb { display: flex; align-items: center; gap: 8px; color: var(--of-text-3); font-size: 13px; }
 .pdp-breadcrumb .sep { color: #d1d5db; }
-
+.btn-favorite { flex: 1; }
 .pdp-main {
   display: grid; grid-template-columns: 440px 1fr; gap: 40px;
   background: var(--of-surface); border-radius: 16px; box-shadow: var(--of-shadow); padding: 28px;

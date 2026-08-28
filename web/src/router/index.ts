@@ -52,7 +52,9 @@ const routes: RouteRecordRaw[] = [
       { path: 'product/:id', name: 'shop-product', component: () => import('../views/shop/ShopProductDetail.vue'), meta: { title: '商品详情' } },
       { path: 'cart', name: 'shop-cart', component: () => import('../views/shop/ShopCart.vue'), meta: { title: '购物车' } },
       { path: 'orders', name: 'shop-orders', component: () => import('../views/shop/ShopMyOrders.vue'), meta: { title: '我的订单' } }
-      ,{ path: 'chat', name: 'shop-chat', component: () => import('../views/shop/ShopChatView.vue'), meta: { title: '咨询消息' } }
+        , { path: 'chat', name: 'shop-chat', component: () => import('../views/shop/ShopChatView.vue'), meta: { title: '咨询消息' } }
+        , { path: 'favorites', name: 'shop-favorites', component: () => import('../views/shop/ShopFavorites.vue'), meta: { title: '我的收藏' } },
+
     ]
   },
 
