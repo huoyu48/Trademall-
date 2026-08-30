@@ -15,10 +15,14 @@
           <p class="muted">这是项目演示付款，不会从支付宝或银行卡扣款。</p>
           <div class="amount">¥ {{ centToYuan(payment.amountCent) }}</div>
           <p class="order-no">订单号 {{ payment.orderNo }}</p>
-          <el-button type="primary" size="large" class="confirm-btn" :loading="confirming" @click="confirm">
-            确认模拟付款
+          <el-button type="primary" size="large" class="confirm-btn" :loading="confirming"
+            :disabled="paymentExpired" @click="confirm">
+            {{ paymentExpired ? '付款码已过期' : '确认模拟付款' }}
           </el-button>
-          <p v-if="payment.expiresAt" class="expiry">付款码有效至 {{ formatTime(payment.expiresAt) }}</p>
+          <p v-if="payment.expiresAt" class="expiry" :class="{ expired: paymentExpired }">
+            <template v-if="paymentExpired">付款码已过期，请返回商城重新发起付款</template>
+            <template v-else>剩余 {{ remainingTime }}，有效至 {{ formatTime(payment.expiresAt) }}</template>
+          </p>
         </template>
         <template v-else>
           <div class="result failed">!</div>
@@ -32,7 +36,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { confirmMockPayment, mockPaymentPage, type MockPaymentPage } from '../api/customer'
@@ -44,6 +48,25 @@ const payment = ref<MockPaymentPage | null>(null)
 const loading = ref(true)
 const confirming = ref(false)
 const loadError = ref('')
+const now = ref(Date.now())
+let countdownTimer: ReturnType<typeof setInterval> | null = null
+
+const remainingSeconds = computed(() => {
+  if (!payment.value?.expiresAt) return null
+  const expiresAt = new Date(payment.value.expiresAt).getTime()
+  if (Number.isNaN(expiresAt)) return null
+  return Math.max(0, Math.ceil((expiresAt - now.value) / 1000))
+})
+
+const paymentExpired = computed(() => remainingSeconds.value === 0)
+
+const remainingTime = computed(() => {
+  const totalSeconds = remainingSeconds.value
+  if (totalSeconds === null) return '--:--'
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+})
 
 function formatTime(value: string) {
   return value.replace('T', ' ').slice(0, 19)
@@ -65,6 +88,10 @@ async function load() {
 }
 
 async function confirm() {
+  if (paymentExpired.value) {
+    ElMessage.warning('付款码已过期，请返回商城重新发起付款')
+    return
+  }
   confirming.value = true
   try {
     payment.value = await confirmMockPayment(token)
@@ -74,7 +101,16 @@ async function confirm() {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  countdownTimer = setInterval(() => {
+    now.value = Date.now()
+  }, 1000)
+})
+
+onUnmounted(() => {
+  if (countdownTimer) clearInterval(countdownTimer)
+})
 </script>
 
 <style scoped>
@@ -84,5 +120,5 @@ onMounted(load)
 .badge { display: inline-block; margin: 14px 0 20px; padding: 5px 12px; border-radius: 999px; color: #0f766e; background: #ccfbf1; font-size: 13px; font-weight: 700; }
 .result { width: 74px; height: 74px; margin: 6px auto 18px; display: grid; place-items: center; border-radius: 50%; color: #fff; font-size: 38px; font-weight: 800; }
 .success { background: #10b981; }.wallet { background: #6366f1; }.failed { background: #f59e0b; }
-h1 { margin: 0 0 10px; color: #1e293b; font-size: 24px; }.muted { color: #64748b; line-height: 1.7; font-size: 14px; }.amount { margin: 24px 0 8px; color: #ef4444; font-size: 36px; font-weight: 800; }.order-no, .expiry { color: #94a3b8; font-size: 12px; }.confirm-btn { width: 100%; height: 48px; margin-top: 22px; font-size: 16px; font-weight: 700; }
+h1 { margin: 0 0 10px; color: #1e293b; font-size: 24px; }.muted { color: #64748b; line-height: 1.7; font-size: 14px; }.amount { margin: 24px 0 8px; color: #ef4444; font-size: 36px; font-weight: 800; }.order-no, .expiry { color: #94a3b8; font-size: 12px; }.expiry.expired { color: #ef4444; }.confirm-btn { width: 100%; height: 48px; margin-top: 22px; font-size: 16px; font-weight: 700; }
 </style>
